@@ -5,6 +5,8 @@ import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { DatabaseModule } from './database/database.module';
 import { TenantContextInterceptor } from './context/tenant-context.interceptor';
 import { PublicacionesModule } from './publicaciones/publicaciones.module';
+import { AuditoriaModule } from './auditoria/auditoria.module';
+import { SecretariasModule } from './secretarias/secretarias.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RealtimeModule } from './realtime/realtime.module';
@@ -17,6 +19,8 @@ import { HealthController } from './health.controller';
     DatabaseModule,
     AuthModule,
     PublicacionesModule,
+    AuditoriaModule,
+    SecretariasModule,
     RealtimeModule,
   ],
   controllers: [HealthController],

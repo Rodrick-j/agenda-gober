@@ -66,3 +66,30 @@ export function actualizarEstado(token: string, id: string, estado: EstadoPublic
     token,
   );
 }
+
+export interface Secretaria {
+  id: string;
+  nombre: string;
+  slug: string;
+  activa: boolean;
+  publicaciones_visibles: number;
+}
+
+export function getSecretarias(token: string) {
+  return request<Secretaria[]>("/secretarias", {}, token);
+}
+
+export interface RegistroAuditoria {
+  id: number;
+  tabla: string;
+  accion: string;
+  registro_id: string;
+  datos_anteriores: Record<string, unknown> | null;
+  datos_nuevos: Record<string, unknown> | null;
+  created_at: string;
+  usuario_email: string | null;
+}
+
+export function getAuditoria(token: string) {
+  return request<RegistroAuditoria[]>("/auditoria", {}, token);
+}

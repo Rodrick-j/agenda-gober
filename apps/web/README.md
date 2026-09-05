@@ -21,11 +21,17 @@ datos con las migraciones aplicadas.
   decodificación **no verificada** del JWT solo para mostrar quién sos en la
   UI — la autorización real la decide siempre el backend.
 - `src/lib/roles.ts` — espejo cosmético de `rol_rango()` de la base de datos,
-  para no mostrar botones de transición que el backend va a rechazar. Si un
-  botón igual llegara a mostrarse de más, el backend responde 403 igual.
-- `src/app/dashboard/page.tsx` — conecta el socket con el mismo token del
-  login (`io(url, { auth: { token } })`) y actualiza la lista al vuelo con el
-  evento `publicacion:cambio`.
+  para no mostrar botones/secciones que el backend va a rechazar. Si igual se
+  mostraran de más, el backend responde 403 / devuelve 0 filas.
+- `src/lib/session-context.tsx` — sesión (token + claims) compartida por todo
+  el panel.
+- `src/lib/realtime-context.tsx` — **una sola** conexión WebSocket para todo
+  el panel; las páginas se suscriben con `onCambio()`.
+- `src/app/(panel)/layout.tsx` — shell autenticado: chequea token, sidebar
+  fijo en desktop / drawer en móvil, topbar con indicador de tiempo real.
+- Secciones: `/dashboard` (publicaciones con búsqueda y filtro por estado,
+  en vivo), `/secretarias` (catálogo), `/auditoria` (registro de cambios,
+  solo visible para roles transversales — respaldado por RLS en el backend).
 
 ## Qué falta antes de producción
 
