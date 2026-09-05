@@ -1,14 +1,27 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { DatabaseModule } from './database/database.module';
 import { TenantContextInterceptor } from './context/tenant-context.interceptor';
 import { PublicacionesModule } from './publicaciones/publicaciones.module';
+import { AuthModule } from './auth/auth.module';
+import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { HealthController } from './health.controller';
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), DatabaseModule, PublicacionesModule],
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
+    DatabaseModule,
+    AuthModule,
+    PublicacionesModule,
+  ],
   controllers: [HealthController],
-  providers: [{ provide: APP_INTERCEPTOR, useClass: TenantContextInterceptor }],
+  providers: [
+    { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_INTERCEPTOR, useClass: TenantContextInterceptor },
+  ],
 })
 export class AppModule {}

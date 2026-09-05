@@ -7,9 +7,9 @@ ningún controller: es `src/context/tenant-context.interceptor.ts`.
 
 Cada request HTTP:
 
-1. El interceptor identifica al usuario (por ahora vía el header
-   `x-user-email` — ver "Login temporal" abajo), y busca su rol y secretaría.
-2. Abre una transacción (`BEGIN`) y ejecuta
+1. `JwtAuthGuard` verifica el token y deja `req.user` (userId, rol,
+   secretariaId) — ver "Autenticación" abajo.
+2. El interceptor abre una transacción (`BEGIN`) y ejecuta
    `set_config('app.current_rol', ...)`, `set_config('app.current_secretaria_id', ...)`
    y `set_config('app.current_user_id', ...)` **parametrizados** (nunca
    concatenando el valor en el SQL).
@@ -27,16 +27,25 @@ Las políticas RLS reales viven en la base de datos (`db/migrations/`), no
 acá — este interceptor solo le da a Postgres el contexto que esas políticas
 necesitan para decidir.
 
-## Login temporal (`x-user-email`)
+## Autenticación
 
-Todavía no hay autenticación real. Mientras tanto, cualquier request debe
-mandar el header `x-user-email` con el correo de un usuario existente y con
-rol asignado en `usuario_roles` — si no, la API responde 401.
+`POST /auth/login` con `{ email, password }` devuelve `{ accessToken }` (JWT,
+expira en 2h). El resto de rutas exige `Authorization: Bearer <token>` — lo
+verifica `JwtAuthGuard` (global) y lo procesa `JwtStrategy`, que deja
+`req.user = { userId, rol, secretariaId }` ya validado. El interceptor de
+contexto (arriba) usa esos claims directamente, sin volver a tocar la base de
+datos.
 
-**Esto es exclusivamente para desarrollo.** Antes de exponer esta API fuera
-de tu máquina hay que reemplazarlo por JWT/sesión real, donde el interceptor
-lea el usuario del token verificado en vez de un header sin firmar que
-cualquiera puede falsificar.
+Rutas marcadas con `@Public()` (`/health`, `/auth/login`) no pasan por el
+guard ni abren transacción.
+
+`/auth/login` tiene rate-limiting: máximo 5 intentos por minuto por IP
+(`@Throttle` + `ThrottlerGuard`) — cierra el hallazgo de fuerza bruta del
+pentest (`../../pentest/REPORTE.md`), ahora sí en la superficie real
+(usuarios finales), no en la credencial interna de Postgres.
+
+Usuarios de prueba (contraseña `Password123!` para los tres):
+`salud@test.local`, `obras@test.local`, `gobernador@test.local`.
 
 ## Arrancar
 
@@ -53,14 +62,20 @@ Requiere que la base de datos ya esté arriba (`../../scripts/migrate.sh`).
 ## Probar
 
 ```bash
-# Sin header -> 401
+# Sin token -> 401
 curl http://localhost:3001/publicaciones
 
-# Como un usuario de Salud -> solo ve publicaciones de Salud
-curl http://localhost:3001/publicaciones -H "x-user-email: salud@test.local"
+# Login
+TOKEN=$(curl -s -X POST http://localhost:3001/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"salud@test.local","password":"Password123!"}' \
+  | node -e "process.stdin.on('data',d=>console.log(JSON.parse(d).accessToken))")
+
+# Como Salud -> solo ve publicaciones de Salud
+curl http://localhost:3001/publicaciones -H "Authorization: Bearer $TOKEN"
 
 curl -X POST http://localhost:3001/publicaciones \
-  -H "Content-Type: application/json" -H "x-user-email: salud@test.local" \
+  -H "Content-Type: application/json" -H "Authorization: Bearer $TOKEN" \
   -d '{"titulo":"t","contenido":"c","nivelConfidencialidad":"interna"}'
 ```
 
