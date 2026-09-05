@@ -9,7 +9,61 @@
    así que fijamos un fondo claro estable en vez de seguir el dark-mode del
    sistema — evita texto oscuro sobre fondo oscuro en pantallas de carga. */
 body {
-  background: #f8fafc;
+  background: #f4f7fb;
   color: #0f172a;
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  min-width: 320px;
+  text-rendering: optimizeLegibility;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+button:not(:disabled),
+a,
+select {
+  cursor: pointer;
+}
+
+::selection {
+  background: #8b1538;
+  color: #fff;
+}
+
+.institutional-header::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(92, 5, 34, 0.98) 0%, rgba(111, 11, 43, 0.94) 43%, rgba(17, 55, 91, 0.78) 100%),
+    radial-gradient(circle at 82% 110%, rgba(255, 255, 255, 0.25) 0 2%, transparent 2.5%),
+    linear-gradient(155deg, transparent 58%, rgba(255, 255, 255, 0.11) 59% 61%, transparent 62%);
+}
+
+.institutional-header > * {
+  position: relative;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

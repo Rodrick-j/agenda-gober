@@ -55,15 +55,16 @@ export function PublicacionCard({ publicacion, rol, onTransicion }: Props) {
   const acciones = accionesPara(publicacion.estado).filter((a) => miRango >= a.rangoMinimo);
 
   return (
-    <li className="flex flex-col rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md">
+    <li className="group relative flex flex-col overflow-hidden rounded-2xl border border-slate-200/80 bg-white p-5 shadow-[0_5px_24px_rgba(15,23,42,.045)] transition-all duration-300 hover:-translate-y-0.5 hover:border-blue-200 hover:shadow-[0_14px_34px_rgba(15,23,42,.09)]">
+      <span className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-[#840c32] via-amber-400 to-[#0d5fc1] opacity-0 transition-opacity group-hover:opacity-100" />
       <div className="mb-2 flex items-start justify-between gap-3">
-        <h3 className="font-semibold leading-snug text-slate-900">{publicacion.titulo}</h3>
+        <h3 className="font-extrabold leading-snug text-[#183558]">{publicacion.titulo}</h3>
         <Badge texto={publicacion.estado} clase={ESTADO_ESTILO[publicacion.estado]} />
       </div>
       <div className="mb-3">
         <Badge texto={publicacion.nivel_confidencialidad} clase={NIVEL_ESTILO[publicacion.nivel_confidencialidad]} />
       </div>
-      <p className="mb-4 flex-1 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">
+      <p className="mb-4 line-clamp-5 flex-1 whitespace-pre-wrap text-xs leading-relaxed text-slate-600">
         {publicacion.contenido}
       </p>
       {acciones.length > 0 && (
@@ -74,8 +75,8 @@ export function PublicacionCard({ publicacion, rol, onTransicion }: Props) {
               onClick={() => onTransicion(publicacion.id, a.estado)}
               className={
                 a.primaria
-                  ? "rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-indigo-700"
-                  : "rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+                  ? "rounded-lg bg-[#0d5fc1] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#094f9f]"
+                  : "rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-rose-200 hover:bg-rose-50 hover:text-[#7d092a]"
               }
             >
               {a.etiqueta}

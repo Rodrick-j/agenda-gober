@@ -35,7 +35,7 @@ export function DocumentosPublicacion({ publicacionId }: { publicacionId: string
   }
 
   useEffect(() => {
-    if (abierto && !cargado) void cargar();
+    if (abierto && !cargado) queueMicrotask(() => void cargar());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [abierto]);
 

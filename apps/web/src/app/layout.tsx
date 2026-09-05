@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "AGENDA.GOBER",
-  description: "Plataforma de gobernación",
+  title: "Agenda Institucional | Gobernación de Oruro",
+  description: "Sistema de gestión de agenda y coordinación institucional de la Gobernación de Oruro.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
