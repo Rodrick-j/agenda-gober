@@ -44,8 +44,36 @@ guard ni abren transacción.
 pentest (`../../pentest/REPORTE.md`), ahora sí en la superficie real
 (usuarios finales), no en la credencial interna de Postgres.
 
-Usuarios de prueba (contraseña `Password123!` para los tres):
-`salud@test.local`, `obras@test.local`, `gobernador@test.local`.
+Usuarios de prueba (contraseña `Password123!` para todos):
+`salud@test.local` (secretario), `salud.director@test.local` (director),
+`salud.operador@test.local` (operador), `obras@test.local` (secretario),
+`gobernador@test.local` (gobernador).
+
+## Permisos finos (rol × nivel de confidencialidad)
+
+Esto vive en la base de datos (`db/migrations/005_permisos_finos.sql`), no en
+la API — así ningún bug de NestJS puede filtrar algo que Postgres ya bloquea.
+
+Rango por rol dentro de una secretaría: `operador(1) < director(2) <
+secretario(3)`. Rango requerido por nivel: `publica`/`interna` → 1,
+`reservada` → 2, `confidencial` → 3. Un rol solo ve/crea/edita filas cuyo
+nivel de confidencialidad esté a su alcance (política RLS
+`rol_rango(...) >= nivel_rango(...)`). Los roles transversales (gobernador,
+jefe_gabinete, admin) no tienen este límite.
+
+Máquina de estados de `publicaciones.estado`
+(`fn_validar_transicion_publicacion`, trigger `BEFORE UPDATE`):
+
+```
+borrador --(cualquier rol de la secretaría)--> revision
+revision --(director o secretario)-----------> aprobado
+aprobado --(solo secretario)------------------> publicado
+cualquier estado --(director o secretario)----> borrador   (rechazo)
+```
+
+`PATCH /publicaciones/:id/estado` con `{ "estado": "..." }` dispara la
+transición; una transición inválida para tu rango responde 403 con el motivo
+(lo lanza el trigger, la API solo lo traduce — ver `src/common/pg-error.util.ts`).
 
 ## Arrancar
 
