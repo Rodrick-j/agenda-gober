@@ -88,6 +88,11 @@ detalle y cómo reproducirlo.
 
 El backend NestJS que implementa este patrón (`set_config` por request,
 dentro de la misma transacción) vive en [`apps/api`](apps/api/README.md).
-Probado en vivo: aislamiento por secretaría a través de HTTP real, rechazo
-de intentos de forzar `secretariaId` desde el cliente, y 401 sin usuario
-válido.
+Incluye autenticación JWT real, permisos finos por rango de rol y nivel de
+confidencialidad (enforced en Postgres, no en la API), y tiempo real vía
+WebSocket + `NOTIFY`/`LISTEN` filtrado por la misma RLS.
+
+## Frontend
+
+Next.js + Tailwind en [`apps/web`](apps/web/README.md): login, listado de
+publicaciones con actualizaciones en vivo, y formulario de creación.
