@@ -12,41 +12,51 @@ function Topbar({ sesion, onMenu, onLogout }: { sesion: SesionUsuario; onMenu: (
   const iniciales = sesion.email.slice(0, 2).toUpperCase();
 
   return (
-    <header className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur sm:px-6">
-      <button
-        onClick={onMenu}
-        className="rounded-lg p-2 text-slate-600 hover:bg-slate-100 lg:hidden"
-        aria-label="Abrir menú"
-      >
-        <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
-        </svg>
-      </button>
+    <header className="sticky top-0 z-20 flex items-center justify-between border-b border-slate-200/50 bg-white/75 px-4 py-3 backdrop-blur-md sm:px-6 shadow-sm">
+      <div className="flex items-center gap-4">
+        <button
+          onClick={onMenu}
+          className="rounded-xl p-2 text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors lg:hidden"
+          aria-label="Abrir menú"
+        >
+          <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+          </svg>
+        </button>
 
-      <div className="flex items-center gap-1.5 text-xs font-medium text-slate-500 lg:ml-0">
-        <span className={`inline-block h-2 w-2 rounded-full ${conectado ? "bg-emerald-500" : "bg-red-400"}`} />
-        {conectado ? "En vivo" : "Desconectado"}
+        <div className="flex items-center gap-2 rounded-full border border-slate-200/60 bg-white px-3 py-1 shadow-sm lg:ml-0">
+          <span className="relative flex h-2.5 w-2.5">
+            {conectado && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-75"></span>}
+            <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${conectado ? "bg-emerald-500" : "bg-red-500"}`}></span>
+          </span>
+          <span className="text-xs font-medium text-slate-600">
+            {conectado ? "Sistema en vivo" : "Desconectado"}
+          </span>
+        </div>
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-4">
         <div className="hidden text-right sm:block">
-          <p className="text-sm font-medium text-slate-700" translate="no">
+          <p className="text-sm font-semibold text-slate-800" translate="no">
             {sesion.email}
           </p>
-          <p className="text-xs capitalize text-slate-500">{sesion.rol}</p>
+          <p className="text-xs font-medium uppercase tracking-wider text-indigo-500">{sesion.rol}</p>
         </div>
-        <div
-          className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-600"
-          translate="no"
-        >
-          {iniciales}
+        
+        <div className="flex items-center gap-3 border-l border-slate-200 pl-4">
+          <div
+            className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 text-xs font-bold text-white shadow-inner shadow-indigo-200"
+            translate="no"
+          >
+            {iniciales}
+          </div>
+          <button
+            onClick={onLogout}
+            className="flex items-center justify-center rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-sm font-medium text-slate-600 shadow-sm transition-all hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+          >
+            Salir
+          </button>
         </div>
-        <button
-          onClick={onLogout}
-          className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
-        >
-          Salir
-        </button>
       </div>
     </header>
   );

@@ -2,6 +2,7 @@
 
 import type { EstadoPublicacion, Publicacion } from "@/lib/api";
 import { rangoDeRol } from "@/lib/roles";
+import { DocumentosPublicacion } from "./DocumentosPublicacion";
 
 const NIVEL_ESTILO: Record<string, string> = {
   publica: "bg-slate-100 text-slate-600 ring-slate-200",
@@ -82,6 +83,8 @@ export function PublicacionCard({ publicacion, rol, onTransicion }: Props) {
           ))}
         </div>
       )}
+
+      <DocumentosPublicacion publicacionId={publicacion.id} />
     </li>
   );
 }

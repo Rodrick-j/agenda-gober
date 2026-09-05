@@ -93,3 +93,56 @@ export interface RegistroAuditoria {
 export function getAuditoria(token: string) {
   return request<RegistroAuditoria[]>("/auditoria", {}, token);
 }
+
+export interface Documento {
+  id: string;
+  publicacion_id: string;
+  nombre_archivo: string;
+  mime: string;
+  tamano_bytes: string;
+  created_at: string;
+}
+
+export function getDocumentos(token: string, publicacionId: string) {
+  return request<Documento[]>(`/publicaciones/${publicacionId}/documentos`, {}, token);
+}
+
+// Subida multipart: no se pasa Content-Type a mano (el navegador arma el
+// boundary de FormData por sí solo).
+export async function subirDocumento(token: string, publicacionId: string, archivo: File) {
+  const form = new FormData();
+  form.append("archivo", archivo);
+  const res = await fetch(`${API_URL}/publicaciones/${publicacionId}/documentos`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ message: res.statusText }));
+    const message = Array.isArray(body.message) ? body.message.join(", ") : body.message;
+    throw new ApiError(message ?? "Error al subir", res.status);
+  }
+  return res.json() as Promise<Documento>;
+}
+
+// Descarga autenticada: se baja como blob y se fuerza el guardado, porque el
+// endpoint requiere el header Authorization (no se puede usar un <a href>).
+export async function descargarDocumento(token: string, doc: Documento) {
+  const res = await fetch(`${API_URL}/documentos/${doc.id}/descargar`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new ApiError("No se pudo descargar", res.status);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = doc.nombre_archivo;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+export function eliminarDocumento(token: string, id: string) {
+  return request<{ eliminado: boolean }>(`/documentos/${id}`, { method: "DELETE" }, token);
+}

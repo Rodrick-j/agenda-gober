@@ -75,6 +75,27 @@ cualquier estado --(director o secretario)----> borrador   (rechazo)
 transición; una transición inválida para tu rango responde 403 con el motivo
 (lo lanza el trigger, la API solo lo traduce — ver `src/common/pg-error.util.ts`).
 
+## Documentos (adjuntos)
+
+Adjuntos por publicación, guardados como `bytea` **dentro** de la fila
+(`db/migrations/007_documentos.sql`), a propósito: así el documento hereda la
+RLS de su publicación padre y no hay forma de bajarlo por una URL estática
+saltándose los permisos. Para archivos grandes, migrar a object storage (R2)
+manteniendo la descarga validada contra la visibilidad del padre.
+
+- `GET  /publicaciones/:id/documentos` — metadata (nunca el binario)
+- `POST /publicaciones/:id/documentos` — multipart, campo `archivo`, máx 10 MB
+- `GET  /documentos/:id/descargar` — descarga autenticada (StreamableFile)
+- `DELETE /documentos/:id`
+
+La política `documentos_select/insert/delete` usa
+`EXISTS (SELECT 1 FROM publicaciones p WHERE p.id = documentos.publicacion_id)`:
+como `publicaciones` tiene RLS, ese `EXISTS` solo encuentra la fila si la
+publicación es visible para el usuario. Verificado: Obras no ve/descarga
+adjuntos de Salud (404), y un operador no descarga el adjunto de una
+publicación confidencial (404) que el secretario sí baja (200). La auditoría
+registra alta/baja de documentos **sin** el binario (`to_jsonb(NEW) - 'contenido'`).
+
 ## Tiempo real
 
 WebSocket (`socket.io`) en el mismo puerto. El cliente se conecta con
