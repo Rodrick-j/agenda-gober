@@ -75,6 +75,32 @@ cualquier estado --(director o secretario)----> borrador   (rechazo)
 transición; una transición inválida para tu rango responde 403 con el motivo
 (lo lanza el trigger, la API solo lo traduce — ver `src/common/pg-error.util.ts`).
 
+## Tiempo real
+
+WebSocket (`socket.io`) en el mismo puerto. El cliente se conecta con
+`io(url, { auth: { token: accessToken } })` — sin token válido, se
+desconecta al toque (`RealtimeGateway.handleConnection`).
+
+Cuando cambia una fila de `publicaciones` (INSERT/UPDATE), un trigger hace
+`pg_notify('publicaciones_cambios', ...)` con solo `{ id, accion }` — nunca
+contenido (`db/migrations/006_notify_publicaciones.sql`). `PgListenerService`
+mantiene una conexión propia con `LISTEN` (no puede usar el pool: necesita
+una conexión de larga duración) y, por cada socket conectado, vuelve a
+consultar esa fila **con el contexto de sesión de ese usuario**
+(`set_config` igual que en HTTP). Si RLS la bloquea, no llega nada — el
+filtro de tiempo real es la misma política que ya existe, no una copia en
+TypeScript que se pueda desincronizar.
+
+Evento emitido: `publicacion:cambio` con `{ accion, publicacion }`.
+
+Prueba manual con tres usuarios de distinto rango y secretaría, incluida la
+verificación de que un nivel `confidencial` no le llega a un operador:
+
+```bash
+npm run start   # en una terminal
+node test-realtime.manual.js   # en otra
+```
+
 ## Arrancar
 
 ```bash

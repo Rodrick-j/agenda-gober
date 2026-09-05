@@ -7,6 +7,7 @@ import { TenantContextInterceptor } from './context/tenant-context.interceptor';
 import { PublicacionesModule } from './publicaciones/publicaciones.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
+import { RealtimeModule } from './realtime/realtime.module';
 import { HealthController } from './health.controller';
 
 @Module({
@@ -16,6 +17,7 @@ import { HealthController } from './health.controller';
     DatabaseModule,
     AuthModule,
     PublicacionesModule,
+    RealtimeModule,
   ],
   controllers: [HealthController],
   providers: [

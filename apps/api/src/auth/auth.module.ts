@@ -22,5 +22,8 @@ import { JwtStrategy } from './jwt.strategy';
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],
+  // JwtModule exportado: RealtimeGateway también necesita verificar tokens
+  // (el handshake de WebSocket no pasa por los guards HTTP).
+  exports: [JwtModule],
 })
 export class AuthModule {}

@@ -1,0 +1,100 @@
+import { Inject, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { Client, Pool } from 'pg';
+import { PG_POOL } from '../database/database.module';
+import { RealtimeGateway } from './realtime.gateway';
+
+interface CambioPayload {
+  id: string;
+  accion: 'INSERT' | 'UPDATE';
+}
+
+// LISTEN necesita una conexión propia y de larga duración -- no se puede
+// hacer desde el pool (que reparte y recicla clientes por request).
+@Injectable()
+export class PgListenerService implements OnModuleInit, OnModuleDestroy {
+  private readonly logger = new Logger(PgListenerService.name);
+  private client?: Client;
+  private stopped = false;
+
+  constructor(
+    private readonly config: ConfigService,
+    @Inject(PG_POOL) private readonly pool: Pool,
+    private readonly gateway: RealtimeGateway,
+  ) {}
+
+  async onModuleInit() {
+    await this.connect();
+  }
+
+  private async connect() {
+    const client = new Client({
+      host: this.config.get<string>('DB_HOST'),
+      port: this.config.get<number>('DB_PORT'),
+      database: this.config.get<string>('DB_NAME'),
+      user: this.config.get<string>('DB_USER'),
+      password: this.config.get<string>('DB_PASSWORD'),
+      ssl: { rejectUnauthorized: false },
+    });
+
+    client.on('notification', (msg) => {
+      if (msg.payload) void this.handleNotification(msg.payload);
+    });
+
+    client.on('error', (err) => {
+      this.logger.error(`Conexión LISTEN caída: ${err.message}`);
+      if (!this.stopped) setTimeout(() => void this.connect(), 3000);
+    });
+
+    await client.connect();
+    await client.query('LISTEN publicaciones_cambios');
+    this.client = client;
+    this.logger.log('Escuchando cambios de publicaciones (LISTEN publicaciones_cambios)');
+  }
+
+  // Por cada socket autenticado, vuelve a pedir la fila CON el contexto de
+  // sesión de ese usuario -- si RLS la bloquea, no llega nada y no se manda
+  // el evento. Así el filtro de tiempo real es exactamente el mismo que el
+  // de la API HTTP, sin reimplementar la regla en TypeScript.
+  private async handleNotification(rawPayload: string) {
+    let payload: CambioPayload;
+    try {
+      payload = JSON.parse(rawPayload);
+    } catch {
+      return;
+    }
+
+    for (const socket of this.gateway.getAuthenticatedSockets()) {
+      const { userId, rol, secretariaId } = socket.data.user;
+      const client = await this.pool.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query(
+          `SELECT set_config('app.current_rol', $1, true),
+                  set_config('app.current_secretaria_id', $2, true),
+                  set_config('app.current_user_id', $3, true)`,
+          [rol, secretariaId ?? '', userId],
+        );
+        const { rows } = await client.query(
+          `SELECT id, secretaria_id, titulo, contenido, nivel_confidencialidad, estado, created_at, updated_at
+           FROM publicaciones WHERE id = $1`,
+          [payload.id],
+        );
+        await client.query('COMMIT');
+        if (rows.length > 0) {
+          socket.emit('publicacion:cambio', { accion: payload.accion, publicacion: rows[0] });
+        }
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => undefined);
+        this.logger.error(`Error reenviando evento en tiempo real: ${(err as Error).message}`);
+      } finally {
+        client.release();
+      }
+    }
+  }
+
+  async onModuleDestroy() {
+    this.stopped = true;
+    await this.client?.end();
+  }
+}
