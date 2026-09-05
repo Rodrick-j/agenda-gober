@@ -26,6 +26,15 @@ scripts/migrate.sh                → aplica migraciones pendientes
 scripts/seed.sh                   → carga los seeds
 ```
 
+## TLS obligatorio
+
+La conexión por red exige TLS siempre (`pg_hba.conf` solo tiene reglas
+`hostssl`, no `host`). Cualquier cliente externo debe conectarse con
+`sslmode=require` (o `verify-full` en producción, con un certificado real en
+vez del autofirmado que se genera para desarrollo). Los scripts de este
+proyecto ya lo hacen automáticamente vía `PGSSLMODE=require` en el entorno
+del contenedor.
+
 ## Conectarte con un cliente (DBeaver, pgAdmin, psql)
 
 Como superusuario (administración, DDL):
@@ -34,6 +43,10 @@ Como superusuario (administración, DDL):
 
 Como la aplicación (para probar que RLS funciona de verdad):
 - usuario/clave: `APP_DB_USER` / `APP_DB_PASSWORD`
+
+En ambos casos, en DBeaver/pgAdmin configura el modo SSL como `require`
+(o el equivalente "Require" en la pestaña SSL) — la conexión sin TLS es
+rechazada.
 
 ## Comprobar que el RLS realmente aisla las secretarías
 
@@ -65,9 +78,14 @@ la transacción de cada request (el tercer argumento `true` = `SET LOCAL`, vale
 solo para esa transacción), parametrizado con el usuario autenticado — nunca
 concatenando el valor directo en el SQL, y nunca a mano.
 
+## Pentest
+
+Este entorno ya fue atacado desde Kali (nmap, hydra, intentos de bypass de
+RLS y de TLS) — ver [`pentest/REPORTE.md`](pentest/REPORTE.md) para el
+detalle y cómo reproducirlo.
+
 ## Próximo paso
 
-Con esto ya puedes atacar el contenedor con Kali (nmap, sqlmap, revisar que el
-puerto 5432 no quede expuesto fuera de localhost, probar cambiar
-`app.current_secretaria_id` por fuera de lo permitido) antes de conectar el
-backend en NestJS.
+Conectar un backend real (NestJS) que abra cada transacción con
+`set_config('app.current_rol', ...)` / `set_config('app.current_secretaria_id', ...)`
+según el usuario autenticado.

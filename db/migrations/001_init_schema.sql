@@ -81,6 +81,10 @@ CREATE TRIGGER trg_auditoria_publicaciones
 AFTER INSERT OR UPDATE OR DELETE ON publicaciones
 FOR EACH ROW EXECUTE FUNCTION fn_auditoria_publicaciones();
 
+-- Limite de conexiones simultaneas: contiene el impacto de un agotamiento de
+-- conexiones (por bug o ataque) sin depender de la capa de aplicacion.
+ALTER ROLE :"app_user_name" CONNECTION LIMIT 20;
+
 -- Permisos mínimos del rol de aplicación: nunca superusuario, nunca BYPASSRLS.
 GRANT USAGE ON SCHEMA public TO :"app_user_name";
 GRANT SELECT, INSERT, UPDATE ON secretarias, roles, usuarios, usuario_roles TO :"app_user_name";
