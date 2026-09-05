@@ -8,6 +8,7 @@ import { PublicacionesModule } from './publicaciones/publicaciones.module';
 import { AuditoriaModule } from './auditoria/auditoria.module';
 import { SecretariasModule } from './secretarias/secretarias.module';
 import { DocumentosModule } from './documentos/documentos.module';
+import { EventosModule } from './eventos/eventos.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RealtimeModule } from './realtime/realtime.module';
@@ -23,6 +24,7 @@ import { HealthController } from './health.controller';
     AuditoriaModule,
     SecretariasModule,
     DocumentosModule,
+    EventosModule,
     RealtimeModule,
   ],
   controllers: [HealthController],

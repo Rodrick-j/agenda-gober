@@ -6,8 +6,39 @@ import { RealtimeGateway } from './realtime.gateway';
 
 interface CambioPayload {
   id: string;
-  accion: 'INSERT' | 'UPDATE';
+  accion: 'INSERT' | 'UPDATE' | 'DELETE';
 }
+
+interface CanalConfig {
+  // Evento de socket.io que recibe el frontend.
+  socketEvent: string;
+  // Nombre de la clave que lleva la fila en el payload emitido, ej.
+  // { accion, publicacion } vs. { accion, evento } -- cada modulo mantiene
+  // su propia forma en vez de un "data" generico.
+  payloadKey: string;
+  // Debe devolver como maximo 1 fila; RLS decide si hay fila o no segun el
+  // contexto (rol/secretaria/usuario) ya seteado antes de correrla.
+  query: string;
+}
+
+// Un canal por tabla con tiempo real. Agregar un modulo nuevo (Tareas,
+// Reuniones...) es sumar una entrada acá + el trigger pg_notify equivalente
+// en su migracion -- no hace falta tocar el resto de esta clase.
+const CANALES: Record<string, CanalConfig> = {
+  publicaciones_cambios: {
+    socketEvent: 'publicacion:cambio',
+    payloadKey: 'publicacion',
+    query: `SELECT id, secretaria_id, titulo, contenido, nivel_confidencialidad, estado, created_at, updated_at
+            FROM publicaciones WHERE id = $1`,
+  },
+  eventos_cambios: {
+    socketEvent: 'evento:cambio',
+    payloadKey: 'evento',
+    query: `SELECT id, secretaria_id, titulo, descripcion, lugar, fecha_inicio, fecha_fin,
+                   nivel_confidencialidad, creado_por, created_at, updated_at
+            FROM eventos_agenda WHERE id = $1`,
+  },
+};
 
 // LISTEN necesita una conexión propia y de larga duración -- no se puede
 // hacer desde el pool (que reparte y recicla clientes por request).
@@ -38,7 +69,7 @@ export class PgListenerService implements OnModuleInit, OnModuleDestroy {
     });
 
     client.on('notification', (msg) => {
-      if (msg.payload) void this.handleNotification(msg.payload);
+      if (msg.payload) void this.handleNotification(msg.channel, msg.payload);
     });
 
     client.on('error', (err) => {
@@ -47,20 +78,37 @@ export class PgListenerService implements OnModuleInit, OnModuleDestroy {
     });
 
     await client.connect();
-    await client.query('LISTEN publicaciones_cambios');
+    for (const canal of Object.keys(CANALES)) {
+      await client.query(`LISTEN ${canal}`);
+    }
     this.client = client;
-    this.logger.log('Escuchando cambios de publicaciones (LISTEN publicaciones_cambios)');
+    this.logger.log(`Escuchando: ${Object.keys(CANALES).join(', ')}`);
   }
 
   // Por cada socket autenticado, vuelve a pedir la fila CON el contexto de
   // sesión de ese usuario -- si RLS la bloquea, no llega nada y no se manda
   // el evento. Así el filtro de tiempo real es exactamente el mismo que el
   // de la API HTTP, sin reimplementar la regla en TypeScript.
-  private async handleNotification(rawPayload: string) {
+  private async handleNotification(channel: string, rawPayload: string) {
+    const canal = CANALES[channel];
+    if (!canal) return;
+
     let payload: CambioPayload;
     try {
       payload = JSON.parse(rawPayload);
     } catch {
+      return;
+    }
+
+    if (payload.accion === 'DELETE') {
+      // La fila ya no existe: no hay nada que re-consultar bajo RLS para
+      // decidir a quién le llega. Se avisa el id "pelado" a todo el mundo
+      // (no revela contenido, solo que ese id dejó de existir) y cada
+      // cliente lo saca de su vista si lo tenía cargado -- si nunca lo tuvo
+      // cargado, el aviso no le dice nada.
+      for (const socket of this.gateway.getAuthenticatedSockets()) {
+        socket.emit(canal.socketEvent, { accion: 'DELETE', id: payload.id });
+      }
       return;
     }
 
@@ -75,14 +123,10 @@ export class PgListenerService implements OnModuleInit, OnModuleDestroy {
                   set_config('app.current_user_id', $3, true)`,
           [rol, secretariaId ?? '', userId],
         );
-        const { rows } = await client.query(
-          `SELECT id, secretaria_id, titulo, contenido, nivel_confidencialidad, estado, created_at, updated_at
-           FROM publicaciones WHERE id = $1`,
-          [payload.id],
-        );
+        const { rows } = await client.query(canal.query, [payload.id]);
         await client.query('COMMIT');
         if (rows.length > 0) {
-          socket.emit('publicacion:cambio', { accion: payload.accion, publicacion: rows[0] });
+          socket.emit(canal.socketEvent, { accion: payload.accion, [canal.payloadKey]: rows[0] });
         }
       } catch (err) {
         await client.query('ROLLBACK').catch(() => undefined);

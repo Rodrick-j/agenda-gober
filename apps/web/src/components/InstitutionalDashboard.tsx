@@ -164,8 +164,14 @@ export function InstitutionalDashboard() {
   }, [cargar]);
 
   useEffect(
-    () => onCambio(({ publicacion }) => {
+    () => onCambio(({ publicacion, id }) => {
       setAhora(new Date());
+      if (!publicacion) {
+        // Borrado: hoy publicaciones no expone DELETE, pero el contrato del
+        // canal lo contempla -- se limpia por las dudas.
+        if (id) setPublicaciones((previous) => previous.filter((item) => item.id !== id));
+        return;
+      }
       setPublicaciones((previous) => {
         const index = previous.findIndex((item) => item.id === publicacion.id);
         if (index === -1) return [publicacion, ...previous];

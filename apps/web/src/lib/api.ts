@@ -146,3 +146,46 @@ export async function descargarDocumento(token: string, doc: Documento) {
 export function eliminarDocumento(token: string, id: string) {
   return request<{ eliminado: boolean }>(`/documentos/${id}`, { method: "DELETE" }, token);
 }
+
+export interface Evento {
+  id: string;
+  secretaria_id: string | null;
+  titulo: string;
+  descripcion: string | null;
+  lugar: string | null;
+  fecha_inicio: string;
+  fecha_fin: string;
+  nivel_confidencialidad: NivelConfidencialidad;
+  creado_por: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CrearEventoInput {
+  titulo: string;
+  descripcion?: string;
+  lugar?: string;
+  fechaInicio: string;
+  fechaFin: string;
+  nivelConfidencialidad: NivelConfidencialidad;
+}
+
+export function getEventos(token: string, desde?: string, hasta?: string) {
+  const params = new URLSearchParams();
+  if (desde) params.set("desde", desde);
+  if (hasta) params.set("hasta", hasta);
+  const qs = params.toString();
+  return request<Evento[]>(`/eventos${qs ? `?${qs}` : ""}`, {}, token);
+}
+
+export function crearEvento(token: string, data: CrearEventoInput) {
+  return request<Evento>("/eventos", { method: "POST", body: JSON.stringify(data) }, token);
+}
+
+export function actualizarEvento(token: string, id: string, data: Partial<CrearEventoInput>) {
+  return request<Evento>(`/eventos/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token);
+}
+
+export function eliminarEvento(token: string, id: string) {
+  return request<{ eliminado: boolean }>(`/eventos/${id}`, { method: "DELETE" }, token);
+}

@@ -16,7 +16,7 @@ interface NavItem {
 
 const NAV_PRINCIPAL: NavItem[] = [
   { href: "/dashboard", label: "Inicio", icon: "home" },
-  { label: "Agenda", icon: "calendar", badge: "Pronto" },
+  { href: "/agenda", label: "Agenda", icon: "calendar" },
   { label: "Reuniones", icon: "users", badge: "Pronto" },
   { label: "Gabinete", icon: "briefcase", badge: "Pronto" },
 ];

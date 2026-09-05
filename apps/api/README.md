@@ -96,30 +96,71 @@ adjuntos de Salud (404), y un operador no descarga el adjunto de una
 publicación confidencial (404) que el secretario sí baja (200). La auditoría
 registra alta/baja de documentos **sin** el binario (`to_jsonb(NEW) - 'contenido'`).
 
+## Agenda (eventos institucionales)
+
+`db/migrations/008_eventos_agenda.sql`. Mismo criterio que publicaciones
+(secretaría + rango vs. confidencialidad), más una tercera vía: ver el evento
+si sos uno de sus `evento_responsables` (invitados), sin importar de qué
+secretaría seas — para reuniones inter-secretariales. `secretaria_id NULL` =
+evento transversal (gobernador/jefe de gabinete/admin).
+
+- `GET /eventos?desde=&hasta=` — rango de fechas para la vista de calendario
+- `GET /eventos/:id` — incluye el listado de invitados
+- `POST /eventos`, `PATCH /eventos/:id`, `DELETE /eventos/:id`
+- `PUT /eventos/:id/responsables` — reemplaza el set completo de invitados
+  (más simple e idempotente que agregar/quitar de a uno)
+
+Editar/cancelar exige rango `director`+ (no solo pertenecer a la secretaría),
+para que un operador no pueda reprogramar una reunión por su cuenta.
+
+**Bug real que encontré armando esto, por si sirve de referencia:** hacer que
+`evento_responsables` "herede" la visibilidad de `eventos_agenda` con un
+`EXISTS` directo (como documentos hereda de publicaciones) generaba
+`infinite recursion detected in policy for relation "eventos_agenda"`, porque
+`eventos_select` **también** consulta `evento_responsables` (para la vía de
+invitado) — ciclo. Se rompe con una función `SECURITY DEFINER`
+(`fn_evento_visible_para_actual`): como la crea el rol admin (superusuario en
+este entorno), corre bypaseando RLS, así que consultar `eventos_agenda` desde
+adentro de la política de `evento_responsables` no vuelve a disparar
+`eventos_select`. Además, un invitado necesita poder ver **su propia fila**
+de invitación sin pasar por esa función (si no, no hay forma de que
+`eventos_select` descubra que está invitado) — por eso la política tiene esa
+excepción explícita. Todo el razonamiento queda comentado en la migración.
+
 ## Tiempo real
 
 WebSocket (`socket.io`) en el mismo puerto. El cliente se conecta con
 `io(url, { auth: { token: accessToken } })` — sin token válido, se
 desconecta al toque (`RealtimeGateway.handleConnection`).
 
-Cuando cambia una fila de `publicaciones` (INSERT/UPDATE), un trigger hace
-`pg_notify('publicaciones_cambios', ...)` con solo `{ id, accion }` — nunca
-contenido (`db/migrations/006_notify_publicaciones.sql`). `PgListenerService`
-mantiene una conexión propia con `LISTEN` (no puede usar el pool: necesita
-una conexión de larga duración) y, por cada socket conectado, vuelve a
-consultar esa fila **con el contexto de sesión de ese usuario**
+Cuando cambia una fila de `publicaciones` o `eventos_agenda` (INSERT/UPDATE),
+un trigger hace `pg_notify(canal, { id, accion })` — nunca contenido
+(`006_notify_publicaciones.sql`, `008_eventos_agenda.sql`). `PgListenerService`
+mantiene una conexión propia con `LISTEN` en ambos canales (no puede usar el
+pool: necesita una conexión de larga duración) y, por cada socket conectado,
+vuelve a consultar esa fila **con el contexto de sesión de ese usuario**
 (`set_config` igual que en HTTP). Si RLS la bloquea, no llega nada — el
 filtro de tiempo real es la misma política que ya existe, no una copia en
-TypeScript que se pueda desincronizar.
+TypeScript que se pueda desincronizar. Agregar un módulo nuevo con tiempo
+real es sumar una entrada al mapa `CANALES` de `pg-listener.service.ts`, no
+tocar el resto de la clase.
 
-Evento emitido: `publicacion:cambio` con `{ accion, publicacion }`.
+**DELETE es un caso aparte:** la fila ya no existe, así que no hay nada que
+re-consultar bajo RLS para decidir a quién le llega. Para ese caso se avisa
+el `id` "pelado" (sin contenido) a **todos** los sockets conectados — no
+revela nada sensible, solo que ese id dejó de existir — y cada cliente lo
+saca de su vista si lo tenía cargado.
 
-Prueba manual con tres usuarios de distinto rango y secretaría, incluida la
-verificación de que un nivel `confidencial` no le llega a un operador:
+Eventos emitidos: `publicacion:cambio` con `{ accion, publicacion? , id? }` y
+`evento:cambio` con `{ accion, evento?, id? }` (`publicacion`/`evento` solo
+vienen en INSERT/UPDATE; en DELETE solo viene `id`).
+
+Pruebas manuales:
 
 ```bash
 npm run start   # en una terminal
-node test-realtime.manual.js   # en otra
+node test-realtime.manual.js            # publicaciones: secretaría + confidencialidad
+node test-realtime-eventos.manual.js    # eventos: creación y borrado (aviso sin contenido)
 ```
 
 ## Arrancar

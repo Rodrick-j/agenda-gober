@@ -2,30 +2,36 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
-import { API_URL, type Publicacion } from "@/lib/api";
+import { API_URL, type Evento, type Publicacion } from "@/lib/api";
 
-type CambioHandler = (payload: { accion: string; publicacion: Publicacion }) => void;
+type CambioHandler = (payload: { accion: string; publicacion?: Publicacion; id?: string }) => void;
+type EventoCambioHandler = (payload: { accion: string; evento?: Evento; id?: string }) => void;
 
 interface RealtimeCtx {
   conectado: boolean;
   onCambio: (handler: CambioHandler) => () => void;
+  onEventoCambio: (handler: EventoCambioHandler) => () => void;
 }
 
 const Ctx = createContext<RealtimeCtx | null>(null);
 
-// Una sola conexión WebSocket para todo el panel. Las páginas se suscriben
-// al evento publicacion:cambio con onCambio() y reciben solo lo que la RLS
-// del backend ya autorizó para este usuario.
+// Una sola conexión WebSocket para todo el panel. Las páginas se suscriben a
+// publicacion:cambio / evento:cambio y reciben solo lo que la RLS del
+// backend ya autorizó para este usuario (ver pg-listener.service.ts).
 export function RealtimeProvider({ token, children }: { token: string; children: React.ReactNode }) {
   const [conectado, setConectado] = useState(false);
   const handlers = useRef(new Set<CambioHandler>());
+  const eventoHandlers = useRef(new Set<EventoCambioHandler>());
 
   useEffect(() => {
     const socket: Socket = io(API_URL, { auth: { token } });
     socket.on("connect", () => setConectado(true));
     socket.on("disconnect", () => setConectado(false));
-    socket.on("publicacion:cambio", (payload: { accion: string; publicacion: Publicacion }) => {
+    socket.on("publicacion:cambio", (payload: { accion: string; publicacion?: Publicacion; id?: string }) => {
       handlers.current.forEach((h) => h(payload));
+    });
+    socket.on("evento:cambio", (payload: { accion: string; evento?: Evento; id?: string }) => {
+      eventoHandlers.current.forEach((h) => h(payload));
     });
     return () => {
       socket.disconnect();
@@ -39,7 +45,14 @@ export function RealtimeProvider({ token, children }: { token: string; children:
     };
   }, []);
 
-  return <Ctx.Provider value={{ conectado, onCambio }}>{children}</Ctx.Provider>;
+  const onEventoCambio = useCallback((handler: EventoCambioHandler) => {
+    eventoHandlers.current.add(handler);
+    return () => {
+      eventoHandlers.current.delete(handler);
+    };
+  }, []);
+
+  return <Ctx.Provider value={{ conectado, onCambio, onEventoCambio }}>{children}</Ctx.Provider>;
 }
 
 export function useRealtime(): RealtimeCtx {
