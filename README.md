@@ -84,8 +84,10 @@ Este entorno ya fue atacado desde Kali (nmap, hydra, intentos de bypass de
 RLS y de TLS) — ver [`pentest/REPORTE.md`](pentest/REPORTE.md) para el
 detalle y cómo reproducirlo.
 
-## Próximo paso
+## Backend
 
-Conectar un backend real (NestJS) que abra cada transacción con
-`set_config('app.current_rol', ...)` / `set_config('app.current_secretaria_id', ...)`
-según el usuario autenticado.
+El backend NestJS que implementa este patrón (`set_config` por request,
+dentro de la misma transacción) vive en [`apps/api`](apps/api/README.md).
+Probado en vivo: aislamiento por secretaría a través de HTTP real, rechazo
+de intentos de forzar `secretariaId` desde el cliente, y 401 sin usuario
+válido.
