@@ -4,32 +4,41 @@ import type { EstadoPublicacion, Publicacion } from "@/lib/api";
 import { rangoDeRol } from "@/lib/roles";
 
 const NIVEL_ESTILO: Record<string, string> = {
-  publica: "bg-slate-100 text-slate-700",
-  interna: "bg-blue-100 text-blue-700",
-  reservada: "bg-amber-100 text-amber-800",
-  confidencial: "bg-red-100 text-red-700",
+  publica: "bg-slate-100 text-slate-600 ring-slate-200",
+  interna: "bg-blue-50 text-blue-700 ring-blue-200",
+  reservada: "bg-amber-50 text-amber-800 ring-amber-200",
+  confidencial: "bg-red-50 text-red-700 ring-red-200",
 };
 
 const ESTADO_ESTILO: Record<string, string> = {
-  borrador: "bg-slate-100 text-slate-600",
-  revision: "bg-amber-100 text-amber-700",
-  aprobado: "bg-sky-100 text-sky-700",
-  publicado: "bg-green-100 text-green-700",
+  borrador: "bg-slate-100 text-slate-600 ring-slate-200",
+  revision: "bg-amber-50 text-amber-700 ring-amber-200",
+  aprobado: "bg-sky-50 text-sky-700 ring-sky-200",
+  publicado: "bg-emerald-50 text-emerald-700 ring-emerald-200",
 };
 
 interface Accion {
   estado: EstadoPublicacion;
   etiqueta: string;
   rangoMinimo: number;
+  primaria?: boolean;
 }
 
 function accionesPara(estado: EstadoPublicacion): Accion[] {
   const acciones: Accion[] = [];
-  if (estado === "borrador") acciones.push({ estado: "revision", etiqueta: "Pedir revisión", rangoMinimo: 1 });
-  if (estado === "revision") acciones.push({ estado: "aprobado", etiqueta: "Aprobar", rangoMinimo: 2 });
-  if (estado === "aprobado") acciones.push({ estado: "publicado", etiqueta: "Publicar", rangoMinimo: 3 });
+  if (estado === "borrador") acciones.push({ estado: "revision", etiqueta: "Pedir revisión", rangoMinimo: 1, primaria: true });
+  if (estado === "revision") acciones.push({ estado: "aprobado", etiqueta: "Aprobar", rangoMinimo: 2, primaria: true });
+  if (estado === "aprobado") acciones.push({ estado: "publicado", etiqueta: "Publicar", rangoMinimo: 3, primaria: true });
   if (estado !== "borrador") acciones.push({ estado: "borrador", etiqueta: "Rechazar", rangoMinimo: 2 });
   return acciones;
+}
+
+function Badge({ texto, clase }: { texto: string; clase: string }) {
+  return (
+    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium capitalize ring-1 ring-inset ${clase}`}>
+      {texto}
+    </span>
+  );
 }
 
 interface Props {
@@ -40,29 +49,33 @@ interface Props {
 
 export function PublicacionCard({ publicacion, rol, onTransicion }: Props) {
   const miRango = rangoDeRol(rol);
-  // El backend es quien realmente decide (trigger de transición de estado) —
-  // esto solo evita mostrar un botón que sabemos que va a rebotar con 403.
+  // El backend es quien realmente decide (trigger de transición) — esto solo
+  // evita mostrar un botón que sabemos que va a rebotar con 403.
   const acciones = accionesPara(publicacion.estado).filter((a) => miRango >= a.rangoMinimo);
 
   return (
-    <li className="rounded-xl border border-slate-200 bg-white p-4">
-      <div className="mb-2 flex flex-wrap items-center gap-2">
-        <h3 className="font-medium text-slate-900">{publicacion.titulo}</h3>
-        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${NIVEL_ESTILO[publicacion.nivel_confidencialidad]}`}>
-          {publicacion.nivel_confidencialidad}
-        </span>
-        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${ESTADO_ESTILO[publicacion.estado]}`}>
-          {publicacion.estado}
-        </span>
+    <li className="flex flex-col rounded-xl border border-slate-200 bg-white p-5 shadow-sm transition hover:shadow-md">
+      <div className="mb-2 flex items-start justify-between gap-3">
+        <h3 className="font-semibold leading-snug text-slate-900">{publicacion.titulo}</h3>
+        <Badge texto={publicacion.estado} clase={ESTADO_ESTILO[publicacion.estado]} />
       </div>
-      <p className="mb-3 whitespace-pre-wrap text-sm text-slate-600">{publicacion.contenido}</p>
+      <div className="mb-3">
+        <Badge texto={publicacion.nivel_confidencialidad} clase={NIVEL_ESTILO[publicacion.nivel_confidencialidad]} />
+      </div>
+      <p className="mb-4 flex-1 whitespace-pre-wrap text-sm leading-relaxed text-slate-600">
+        {publicacion.contenido}
+      </p>
       {acciones.length > 0 && (
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-3">
           {acciones.map((a) => (
             <button
               key={a.estado}
               onClick={() => onTransicion(publicacion.id, a.estado)}
-              className="rounded-md border border-slate-300 px-3 py-1 text-xs font-medium text-slate-700 hover:bg-slate-50"
+              className={
+                a.primaria
+                  ? "rounded-lg bg-indigo-600 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-indigo-700"
+                  : "rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:bg-slate-50"
+              }
             >
               {a.etiqueta}
             </button>

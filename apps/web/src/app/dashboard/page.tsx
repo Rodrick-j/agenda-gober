@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { io, type Socket } from "socket.io-client";
 import {
@@ -15,6 +15,7 @@ import {
 } from "@/lib/api";
 import { cerrarSesion, decodificarSesion, obtenerToken, type SesionUsuario } from "@/lib/auth";
 import { PublicacionCard } from "@/components/PublicacionCard";
+import { StatCard } from "@/components/StatCard";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -29,6 +30,7 @@ export default function DashboardPage() {
   const [contenido, setContenido] = useState("");
   const [nivel, setNivel] = useState<NivelConfidencialidad>("interna");
   const [creando, setCreando] = useState(false);
+  const [mostrarForm, setMostrarForm] = useState(false);
 
   useEffect(() => {
     const t = obtenerToken();
@@ -84,6 +86,16 @@ export default function DashboardPage() {
     };
   }, [token]);
 
+  const stats = useMemo(
+    () => ({
+      total: publicaciones.length,
+      revision: publicaciones.filter((p) => p.estado === "revision").length,
+      publicado: publicaciones.filter((p) => p.estado === "publicado").length,
+      confidencial: publicaciones.filter((p) => p.nivel_confidencialidad === "confidencial").length,
+    }),
+    [publicaciones],
+  );
+
   async function onCrear(e: FormEvent) {
     e.preventDefault();
     if (!token) return;
@@ -93,6 +105,7 @@ export default function DashboardPage() {
       await crearPublicacion(token, { titulo, contenido, nivelConfidencialidad: nivel });
       setTitulo("");
       setContenido("");
+      setMostrarForm(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo crear la publicación");
     } finally {
@@ -117,76 +130,134 @@ export default function DashboardPage() {
 
   if (!sesion) return null;
 
+  const iniciales = sesion.email.slice(0, 2).toUpperCase();
+
   return (
-    <main className="mx-auto min-h-screen max-w-3xl px-4 py-8">
-      <header className="mb-6 flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-semibold text-slate-900">AGENDA.GOBER</h1>
-          <p className="flex items-center gap-2 text-sm text-slate-500">
-            {sesion.email} · <span className="font-medium">{sesion.rol}</span>
-            <span
-              className={`inline-block h-2 w-2 rounded-full ${conectado ? "bg-green-500" : "bg-red-400"}`}
-              title={conectado ? "Tiempo real conectado" : "Desconectado"}
-            />
-          </p>
+    <div className="min-h-screen bg-slate-50">
+      <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/90 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-600 text-sm font-bold text-white">
+              AG
+            </div>
+            <div>
+              <h1 className="text-sm font-semibold leading-tight text-slate-900">AGENDA.GOBER</h1>
+              <p className="flex items-center gap-1.5 text-xs text-slate-500">
+                <span
+                  className={`inline-block h-1.5 w-1.5 rounded-full ${conectado ? "bg-emerald-500" : "bg-red-400"}`}
+                />
+                {conectado ? "En vivo" : "Desconectado"}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="hidden text-right sm:block">
+              <p className="text-sm font-medium text-slate-700">{sesion.email}</p>
+              <p className="text-xs capitalize text-slate-500">{sesion.rol}</p>
+            </div>
+            <div className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-200 text-xs font-semibold text-slate-600">
+              {iniciales}
+            </div>
+            <button
+              onClick={onLogout}
+              className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
+            >
+              Salir
+            </button>
+          </div>
         </div>
-        <button onClick={onLogout} className="text-sm text-slate-500 hover:text-slate-900">
-          Salir
-        </button>
       </header>
 
-      <form onSubmit={onCrear} className="mb-8 rounded-xl border border-slate-200 bg-white p-4">
-        <h2 className="mb-3 text-sm font-semibold text-slate-700">Nueva publicación</h2>
-        <input
-          value={titulo}
-          onChange={(e) => setTitulo(e.target.value)}
-          required
-          placeholder="Título"
-          className="mb-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-        />
-        <textarea
-          value={contenido}
-          onChange={(e) => setContenido(e.target.value)}
-          required
-          placeholder="Contenido"
-          rows={3}
-          className="mb-2 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-        />
-        <div className="mb-3 flex items-center gap-2">
-          <label className="text-sm text-slate-600">Confidencialidad</label>
-          <select
-            value={nivel}
-            onChange={(e) => setNivel(e.target.value as NivelConfidencialidad)}
-            className="rounded-md border border-slate-300 px-2 py-1 text-sm"
-          >
-            <option value="publica">Pública</option>
-            <option value="interna">Interna</option>
-            <option value="reservada">Reservada</option>
-            <option value="confidencial">Confidencial</option>
-          </select>
+      <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <div className="mb-8 grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <StatCard etiqueta="Total visibles" valor={stats.total} acento="text-slate-900" />
+          <StatCard etiqueta="En revisión" valor={stats.revision} acento="text-amber-600" />
+          <StatCard etiqueta="Publicadas" valor={stats.publicado} acento="text-emerald-600" />
+          <StatCard etiqueta="Confidenciales" valor={stats.confidencial} acento="text-red-600" />
         </div>
-        <button
-          type="submit"
-          disabled={creando}
-          className="rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-        >
-          {creando ? "Creando..." : "Crear"}
-        </button>
-      </form>
 
-      {error && <p className="mb-4 rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+        <div className="mb-6 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-slate-900">Publicaciones</h2>
+          <button
+            onClick={() => setMostrarForm((v) => !v)}
+            className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700"
+          >
+            {mostrarForm ? "Cerrar" : "+ Nueva"}
+          </button>
+        </div>
 
-      {cargando ? (
-        <p className="text-sm text-slate-500">Cargando…</p>
-      ) : publicaciones.length === 0 ? (
-        <p className="text-sm text-slate-500">No hay publicaciones visibles para tu rol todavía.</p>
-      ) : (
-        <ul className="space-y-3">
-          {publicaciones.map((p) => (
-            <PublicacionCard key={p.id} publicacion={p} rol={sesion.rol} onTransicion={onTransicion} />
-          ))}
-        </ul>
-      )}
-    </main>
+        {mostrarForm && (
+          <form onSubmit={onCrear} className="mb-8 rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="sm:col-span-2">
+                <label className="mb-1 block text-sm font-medium text-slate-700">Título</label>
+                <input
+                  value={titulo}
+                  onChange={(e) => setTitulo(e.target.value)}
+                  required
+                  placeholder="Ej. Avance de obra ruta X"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <label className="mb-1 block text-sm font-medium text-slate-700">Contenido</label>
+                <textarea
+                  value={contenido}
+                  onChange={(e) => setContenido(e.target.value)}
+                  required
+                  rows={4}
+                  placeholder="Detalle de la publicación…"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Confidencialidad</label>
+                <select
+                  value={nivel}
+                  onChange={(e) => setNivel(e.target.value as NivelConfidencialidad)}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                >
+                  <option value="publica">Pública</option>
+                  <option value="interna">Interna</option>
+                  <option value="reservada">Reservada</option>
+                  <option value="confidencial">Confidencial</option>
+                </select>
+              </div>
+              <div className="flex items-end">
+                <button
+                  type="submit"
+                  disabled={creando}
+                  className="rounded-lg bg-indigo-600 px-5 py-2 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {creando ? "Creando…" : "Crear publicación"}
+                </button>
+              </div>
+            </div>
+          </form>
+        )}
+
+        {error && (
+          <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">{error}</p>
+        )}
+
+        {cargando ? (
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {[0, 1, 2].map((i) => (
+              <div key={i} className="h-40 animate-pulse rounded-xl border border-slate-200 bg-white" />
+            ))}
+          </div>
+        ) : publicaciones.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-slate-300 bg-white py-16 text-center">
+            <p className="text-sm text-slate-500">No hay publicaciones visibles para tu rol todavía.</p>
+          </div>
+        ) : (
+          <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {publicaciones.map((p) => (
+              <PublicacionCard key={p.id} publicacion={p} rol={sesion.rol} onTransicion={onTransicion} />
+            ))}
+          </ul>
+        )}
+      </main>
+    </div>
   );
 }

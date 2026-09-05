@@ -28,40 +28,73 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-slate-100 px-4">
-      <form onSubmit={onSubmit} className="w-full max-w-sm rounded-xl bg-white p-8 shadow-sm">
-        <h1 className="mb-1 text-xl font-semibold text-slate-900">AGENDA.GOBER</h1>
-        <p className="mb-6 text-sm text-slate-500">Iniciá sesión para continuar</p>
+    <main className="flex min-h-screen">
+      {/* Panel de marca — visible solo en pantallas grandes */}
+      <div className="hidden w-1/2 flex-col justify-between bg-gradient-to-br from-indigo-700 via-indigo-800 to-slate-900 p-12 text-white lg:flex">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-white/15 text-sm font-bold backdrop-blur">
+            AG
+          </div>
+          <span className="font-semibold">AGENDA.GOBER</span>
+        </div>
+        <div>
+          <h2 className="text-3xl font-semibold leading-tight">Plataforma de gobernación</h2>
+          <p className="mt-3 max-w-sm text-indigo-200">
+            Coordinación en tiempo real entre secretarías, gabinete y despacho del gobernador — con
+            control de acceso por rol y nivel de confidencialidad.
+          </p>
+        </div>
+        <p className="text-xs text-indigo-300">Acceso restringido · Uso institucional</p>
+      </div>
 
-        <label className="mb-1 block text-sm font-medium text-slate-700">Correo</label>
-        <input
-          type="email"
-          required
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="salud@test.local"
-          className="mb-4 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-        />
+      {/* Formulario */}
+      <div className="flex w-full items-center justify-center bg-slate-50 px-4 lg:w-1/2">
+        <form onSubmit={onSubmit} className="w-full max-w-sm">
+          <div className="mb-8 lg:hidden">
+            <div className="mb-2 flex h-11 w-11 items-center justify-center rounded-xl bg-indigo-600 text-sm font-bold text-white">
+              AG
+            </div>
+            <h1 className="text-xl font-semibold text-slate-900">AGENDA.GOBER</h1>
+          </div>
 
-        <label className="mb-1 block text-sm font-medium text-slate-700">Contraseña</label>
-        <input
-          type="password"
-          required
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="mb-4 w-full rounded-md border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none"
-        />
+          <h2 className="mb-1 text-2xl font-semibold text-slate-900">Iniciar sesión</h2>
+          <p className="mb-8 text-sm text-slate-500">Ingresá con tus credenciales institucionales</p>
 
-        {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
+          <label className="mb-1.5 block text-sm font-medium text-slate-700">Correo</label>
+          <input
+            type="email"
+            required
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="usuario@gober.local"
+            className="mb-4 w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          />
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="w-full rounded-md bg-slate-900 px-4 py-2 text-sm font-medium text-white hover:bg-slate-800 disabled:opacity-50"
-        >
-          {loading ? "Entrando..." : "Entrar"}
-        </button>
-      </form>
+          <label className="mb-1.5 block text-sm font-medium text-slate-700">Contraseña</label>
+          <input
+            type="password"
+            required
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+            className="mb-5 w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm focus:border-indigo-500 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+          />
+
+          {error && (
+            <p className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3.5 py-2.5 text-sm text-red-700">
+              {error}
+            </p>
+          )}
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white transition hover:bg-indigo-700 disabled:opacity-50"
+          >
+            {loading ? "Entrando…" : "Entrar"}
+          </button>
+        </form>
+      </div>
     </main>
   );
 }
