@@ -40,12 +40,12 @@ datos con las migraciones aplicadas.
 ## Verificado
 
 - `npm run build` compila sin errores de TypeScript/ESLint.
-- Cabeceras CORS confirmadas entre `localhost:3000` y `localhost:3001`.
+- Cabeceras CORS confirmadas entre `localhost:3002` y `localhost:3001`.
 - El mecanismo de tiempo real (mismo `socket.io-client`) ya se probó
   end-to-end desde Node (`apps/api/test-realtime.manual.js`).
 
 **No verificado en un navegador real** — este entorno no tiene acceso a uno.
-Antes de darlo por terminado, abrí `http://localhost:3000` y probá el flujo
+Antes de darlo por terminado, abrí `http://localhost:3002` y probá el flujo
 completo (login con `salud@test.local` / `Password123!`, crear una
 publicación, y confirmar que el punto de estado cambia a verde cuando el
 WebSocket conecta).
