@@ -326,3 +326,21 @@ export function actualizarProyecto(token: string, id: string, data: ActualizarPr
 export function eliminarProyecto(token: string, id: string) {
   return request<{ eliminado: boolean }>(`/proyectos/${id}`, { method: "DELETE" }, token);
 }
+
+export interface IndicadoresResumen {
+  publicacionesPorEstado: { estado: string; total: number }[];
+  tareasPorEstado: { estado: string; total: number }[];
+  proyectosPorEstado: { estado: string; total: number }[];
+  totales: {
+    publicaciones_total: number;
+    tareas_total: number;
+    tareas_vencidas: number;
+    proyectos_activos: number;
+    avance_promedio: number;
+    eventos_mes: number;
+  };
+}
+
+export function getIndicadoresResumen(token: string) {
+  return request<IndicadoresResumen>("/indicadores/resumen", {}, token);
+}

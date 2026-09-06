@@ -171,6 +171,18 @@ puede.
 
 Tiempo real: canal `proyectos_cambios`, mismo patrón que el resto.
 
+## Indicadores
+
+`GET /indicadores/resumen`. Hermano de Gabinete pero sin restricción de rol:
+agrega `publicaciones`/`tareas`/`proyectos` por estado más un puñado de
+totales (tasa de tareas completadas, tareas vencidas, avance promedio de
+proyectos, eventos del mes). Igual que Gabinete e Indicadores, el SQL no
+filtra por rol — cada quien ve sus propios números reflejados por la RLS de
+siempre, así que a diferencia de Gabinete **no hace falta ser transversal**
+para verlo con sentido: un secretario ve el indicador de su secretaría, un
+transversal ve el agregado de todas. Sin tablas propias ni tiempo real (es
+un rollup, mismo motivo que Gabinete).
+
 ## Gabinete (panel agregado)
 
 `GET /gabinete/resumen`. Sin tablas propias: agrega `publicaciones`,
