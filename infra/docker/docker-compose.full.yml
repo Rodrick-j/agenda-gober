@@ -1,0 +1,97 @@
+name: agenda_gober_full
+
+# Stack completo (Postgres + migraciones + API + Web) en un solo comando:
+#
+#   docker compose --env-file .env -f infra/docker/docker-compose.full.yml up -d --build
+#
+# El compose de al lado (docker-compose.yml) sigue siendo el de "solo la base
+# para desarrollar con la API/Web corriendo fuera de Docker".
+
+services:
+  postgres:
+    image: postgres:16.4
+    container_name: agenda_gober_full_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      PGSSLMODE: require
+    volumes:
+      - agenda_gober_full_pgdata:/var/lib/postgresql/data
+      - ./initdb:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  # Un solo disparo: crea el rol app_user y aplica db/migrations/ en orden.
+  # La API no arranca hasta que este servicio termina con éxito.
+  migrate:
+    image: postgres:16.4
+    container_name: agenda_gober_full_migrate
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      APP_DB_USER: ${APP_DB_USER}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD}
+      PGSSLMODE: require
+      # Poné RUN_SEEDS=true en el .env para cargar db/seeds/ (solo dev/demo).
+      RUN_SEEDS: ${RUN_SEEDS:-false}
+    volumes:
+      - ../../db/migrations:/migrations:ro
+      - ../../db/seeds:/seeds:ro
+      - ./migrate-entrypoint.sh:/migrate-entrypoint.sh:ro
+    entrypoint: ["bash", "/migrate-entrypoint.sh"]
+
+  api:
+    build:
+      context: ../../apps/api
+      dockerfile: Dockerfile
+    container_name: agenda_gober_full_api
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      PORT: 3001
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${POSTGRES_DB}
+      DB_USER: ${APP_DB_USER}
+      DB_PASSWORD: ${APP_DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET:?define JWT_SECRET en .env}
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3002}
+    ports:
+      - "127.0.0.1:3001:3001"
+
+  web:
+    build:
+      context: ../../apps/web
+      dockerfile: Dockerfile
+      args:
+        # NEXT_PUBLIC_* se hornea en build-time (ver apps/web/Dockerfile).
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+    container_name: agenda_gober_full_web
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      NODE_ENV: production
+      PORT: 3002
+    ports:
+      - "127.0.0.1:3002:3002"
+
+volumes:
+  agenda_gober_full_pgdata:

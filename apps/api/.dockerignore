@@ -1,0 +1,13 @@
+node_modules
+dist
+coverage
+test
+*.manual.js
+.env
+.env.*
+!.env.example
+.eslintcache
+*.log
+Dockerfile
+.dockerignore
+README.md

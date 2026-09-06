@@ -1,0 +1,149 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Un push nuevo a la misma rama cancela el run anterior.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  api:
+    name: API (build · migraciones · smoke · e2e)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/api/package-lock.json
+
+      - name: .env de CI (credenciales descartables, no secretas)
+        run: |
+          cat > .env <<'EOF'
+          POSTGRES_USER=ci_admin
+          POSTGRES_PASSWORD=ci_only_pw
+          POSTGRES_DB=agenda_gober
+          POSTGRES_PORT=5433
+          APP_DB_USER=app_user
+          APP_DB_PASSWORD=ci_only_app_pw
+          JWT_SECRET=ci_only_not_a_real_secret_change_in_prod
+          WEB_ORIGIN=http://localhost:3002
+          NEXT_PUBLIC_API_URL=http://localhost:3001
+          RUN_SEEDS=false
+          EOF
+
+      - name: Postgres arriba (con TLS, mismo compose que el repo)
+        run: docker compose --env-file .env -f infra/docker/docker-compose.yml up -d --wait
+
+      - name: Migraciones (valida scripts/migrate.sh en cada PR)
+        run: bash scripts/migrate.sh
+
+      - name: Instalar dependencias
+        working-directory: apps/api
+        run: npm ci
+
+      - name: Build
+        working-directory: apps/api
+        run: npm run build
+
+      - name: Smoke test — arranca y responde /health/ready contra la DB real
+        working-directory: apps/api
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5433
+          DB_NAME: agenda_gober
+          DB_USER: app_user
+          DB_PASSWORD: ci_only_app_pw
+          JWT_SECRET: ci_only_not_a_real_secret_change_in_prod
+          WEB_ORIGIN: http://localhost:3002
+          PORT: 3001
+        run: |
+          node dist/main & echo $! > /tmp/api.pid
+          ok=""
+          for i in $(seq 1 30); do
+            if curl -sf http://127.0.0.1:3001/health/ready; then ok=1; break; fi
+            sleep 1
+          done
+          kill "$(cat /tmp/api.pid)" 2>/dev/null || true
+          test -n "$ok" || { echo "::error::la API no respondió /health/ready"; exit 1; }
+
+      - name: Tests e2e
+        working-directory: apps/api
+        env:
+          DB_HOST: 127.0.0.1
+          DB_PORT: 5433
+          DB_NAME: agenda_gober
+          DB_USER: app_user
+          DB_PASSWORD: ci_only_app_pw
+          JWT_SECRET: ci_only_not_a_real_secret_change_in_prod
+          WEB_ORIGIN: http://localhost:3002
+          PORT: 3001
+        run: npm run test:e2e
+
+      - name: Tests unitarios
+        working-directory: apps/api
+        run: npm test -- --passWithNoTests
+
+      - name: Postgres abajo
+        if: always()
+        run: docker compose --env-file .env -f infra/docker/docker-compose.yml down -v
+
+  web:
+    name: Web (lint · build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Instalar dependencias
+        working-directory: apps/web
+        run: npm ci
+
+      # No bloquea el merge TODAVÍA: hay ~8 avisos preexistentes de
+      # react-hooks/set-state-in-effect (regla nueva de Next 16) en los
+      # page.tsx que hacen fetch on-mount. Ponerlo en `false` cuando estén
+      # resueltos.
+      - name: Lint
+        working-directory: apps/web
+        continue-on-error: true
+        run: npm run lint
+
+      - name: Build
+        working-directory: apps/web
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:3001
+          NEXT_TELEMETRY_DISABLED: "1"
+        run: npm run build
+
+  docker:
+    name: Imágenes Docker (build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build imagen API
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/api
+          push: false
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Build imagen Web
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/web
+          push: false
+          build-args: NEXT_PUBLIC_API_URL=http://localhost:3001
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

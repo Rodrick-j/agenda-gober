@@ -8,8 +8,14 @@ import type { AuthenticatedUser, JwtPayload } from '../auth/jwt-payload';
 // credentials: true + origen explícito (nunca '*' -- el navegador rechaza
 // mandar cookies a un wildcard) porque el JWT ahora viaja en la cookie
 // httpOnly del handshake, no en un payload de auth armado a mano por JS.
+// Mismo criterio multi-origen que main.ts (WEB_ORIGIN separado por comas).
+const WS_ORIGINS = (process.env.WEB_ORIGIN ?? 'http://localhost:3002')
+  .split(',')
+  .map((o) => o.trim())
+  .filter(Boolean);
+
 @Injectable()
-@WebSocketGateway({ cors: { origin: process.env.WEB_ORIGIN ?? 'http://localhost:3002', credentials: true } })
+@WebSocketGateway({ cors: { origin: WS_ORIGINS, credentials: true } })
 export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(RealtimeGateway.name);
 
