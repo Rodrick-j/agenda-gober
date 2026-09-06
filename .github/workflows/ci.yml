@@ -73,7 +73,9 @@ jobs:
           kill "$(cat /tmp/api.pid)" 2>/dev/null || true
           test -n "$ok" || { echo "::error::la API no respondió /health/ready"; exit 1; }
 
-      - name: Tests e2e
+      # test:e2e cubre app.e2e-spec.ts (boot + /health) y rls.e2e-spec.ts
+      # (las políticas Row Level Security como app_user, sin BYPASSRLS).
+      - name: Tests e2e + RLS
         working-directory: apps/api
         env:
           DB_HOST: 127.0.0.1
