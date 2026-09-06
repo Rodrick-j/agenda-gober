@@ -18,7 +18,7 @@ const NAV_PRINCIPAL: NavItem[] = [
   { href: "/dashboard", label: "Inicio", icon: "home" },
   { href: "/agenda", label: "Agenda", icon: "calendar" },
   { label: "Reuniones", icon: "users", badge: "Pronto" },
-  { label: "Gabinete", icon: "briefcase", badge: "Pronto" },
+  { href: "/gabinete", label: "Gabinete", icon: "briefcase", soloTransversal: true },
 ];
 
 const NAV_GESTION: NavItem[] = [
@@ -74,6 +74,7 @@ function MenuGroup({ title, items, pathname, onNavigate }: { title: string; item
 export function InstitutionalSidebar({ rol, onNavigate }: Props) {
   const pathname = usePathname();
   const esTransversal = rangoDeRol(rol) >= 99;
+  const principal = NAV_PRINCIPAL.filter((item) => !item.soloTransversal || esTransversal);
   const gestion = NAV_GESTION.filter((item) => !item.soloTransversal || esTransversal);
 
   return (
@@ -85,7 +86,7 @@ export function InstitutionalSidebar({ rol, onNavigate }: Props) {
       </div>
 
       <div className="flex-1 space-y-6 overflow-y-auto px-3 py-5 [scrollbar-color:#29405a_transparent] [scrollbar-width:thin]">
-        <MenuGroup title="Navegación" items={NAV_PRINCIPAL} pathname={pathname} onNavigate={onNavigate} />
+        <MenuGroup title="Navegación" items={principal} pathname={pathname} onNavigate={onNavigate} />
         <MenuGroup title="Gestión institucional" items={gestion} pathname={pathname} onNavigate={onNavigate} />
       </div>
 

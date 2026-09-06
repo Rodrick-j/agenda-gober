@@ -234,3 +234,47 @@ export function actualizarTarea(
 export function eliminarTarea(token: string, id: string) {
   return request<{ eliminado: boolean }>(`/tareas/${id}`, { method: "DELETE" }, token);
 }
+
+export interface GabineteSecretariaResumen {
+  id: string;
+  nombre: string;
+  publicaciones_revision: number;
+  tareas_pendientes: number;
+  tareas_vencidas: number;
+}
+
+export interface GabineteTareaUrgente {
+  id: string;
+  titulo: string;
+  estado: TareaEstado;
+  prioridad: TareaPrioridad;
+  fecha_vencimiento: string;
+  secretaria_id: string | null;
+  secretaria_nombre: string | null;
+}
+
+export interface GabineteEventoProximo {
+  id: string;
+  titulo: string;
+  lugar: string | null;
+  fecha_inicio: string;
+  fecha_fin: string;
+  secretaria_id: string | null;
+  secretaria_nombre: string | null;
+}
+
+export interface GabineteResumen {
+  secretarias: GabineteSecretariaResumen[];
+  tareasUrgentes: GabineteTareaUrgente[];
+  proximosEventos: GabineteEventoProximo[];
+  totales: {
+    publicaciones_revision: number;
+    tareas_pendientes: number;
+    tareas_vencidas: number;
+    eventos_semana: number;
+  };
+}
+
+export function getGabineteResumen(token: string) {
+  return request<GabineteResumen>("/gabinete/resumen", {}, token);
+}

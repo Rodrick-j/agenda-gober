@@ -154,6 +154,25 @@ Verificado con curl: un operador asignado puede pasar su tarea a
 `titulo` la operación entera se rechaza con 403 — no se aplica el cambio de
 estado a medias, porque es una sola transacción.
 
+## Gabinete (panel agregado)
+
+`GET /gabinete/resumen`. Sin tablas propias: agrega `publicaciones`,
+`eventos_agenda` y `tareas` (conteos por secretaría, tareas vencidas/por
+vencer, próximos 7 días). Mismo criterio que `auditoria.service.ts`: el SQL
+no filtra por rol — cada subquery corre bajo la RLS de siempre, así que un
+secretario que le pegue a este endpoint no ve un error, ve el panel
+"reflejando" solo su propia secretaría (las demás aparecen en la lista
+porque `secretarias` no tiene RLS, pero sus conteos dan 0 porque las
+subqueries a `publicaciones`/`tareas` de otra secretaría no le devuelven
+filas). El frontend igual lo oculta del sidebar y bloquea la página para
+roles no transversales, coherente con cómo ya se maneja Auditoría — no es la
+barrera real, es solo para no mostrar un panel "vacío" y confuso.
+
+Sin tiempo real acá a propósito: es un rollup (conteos y agregados), no una
+fila puntual que el patrón `CANALES` de `pg-listener.service.ts` pueda
+re-consultar por id. Se actualiza con el botón "Actualizar" o al volver a
+entrar a la página.
+
 ## Tiempo real
 
 WebSocket (`socket.io`) en el mismo puerto. El cliente se conecta con

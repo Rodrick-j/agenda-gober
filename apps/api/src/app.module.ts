@@ -10,6 +10,7 @@ import { SecretariasModule } from './secretarias/secretarias.module';
 import { DocumentosModule } from './documentos/documentos.module';
 import { EventosModule } from './eventos/eventos.module';
 import { TareasModule } from './tareas/tareas.module';
+import { GabineteModule } from './gabinete/gabinete.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RealtimeModule } from './realtime/realtime.module';
@@ -27,6 +28,7 @@ import { HealthController } from './health.controller';
     DocumentosModule,
     EventosModule,
     TareasModule,
+    GabineteModule,
     RealtimeModule,
   ],
   controllers: [HealthController],
