@@ -510,3 +510,143 @@ export function resetearPassword(id: string, password: string) {
     body: JSON.stringify({ password }),
   });
 }
+
+// ---- Despacho ----
+
+export type InstruccionPrioridad = "baja" | "media" | "alta" | "urgente";
+export type InstruccionEstado =
+  | "emitida"
+  | "en_organizacion"
+  | "en_ejecucion"
+  | "cumplida"
+  | "observada"
+  | "cancelada";
+export type InstruccionItemTipo = "evento" | "tarea" | "proyecto" | "reunion";
+
+export interface Instruccion {
+  id: string;
+  titulo: string;
+  objetivo: string;
+  prioridad: InstruccionPrioridad;
+  fecha_limite: string | null;
+  estado: InstruccionEstado;
+  emitida_por: string | null;
+  organiza_id: string | null;
+  avance_porcentaje: number;
+  en_riesgo: boolean;
+  created_at: string;
+  updated_at: string;
+  items_total?: number;
+  secretarias?: number;
+}
+
+export interface InstruccionItem {
+  id: string;
+  tipo: InstruccionItemTipo;
+  ref_id: string;
+  secretaria_id: string | null;
+  secretaria_nombre: string | null;
+  detalle: Record<string, unknown> | null;
+}
+
+export interface InstruccionVisto {
+  usuario_id: string;
+  nombre: string;
+  tipo: "visto" | "acuse";
+  visto_at: string;
+}
+
+export interface InstruccionDetalle extends Instruccion {
+  items: InstruccionItem[];
+  vistos: InstruccionVisto[];
+}
+
+export function getInstrucciones() {
+  return request<Instruccion[]>("/despacho/instrucciones");
+}
+
+export function getInstruccion(id: string) {
+  return request<InstruccionDetalle>(`/despacho/instrucciones/${id}`);
+}
+
+export function emitirInstruccion(data: {
+  titulo: string;
+  objetivo: string;
+  prioridad?: InstruccionPrioridad;
+  fechaLimite?: string;
+}) {
+  return request<Instruccion>("/despacho/instrucciones", { method: "POST", body: JSON.stringify(data) });
+}
+
+export function actualizarInstruccion(
+  id: string,
+  data: { organizaId?: string; estado?: "observada" | "cancelada" },
+) {
+  return request<InstruccionDetalle>(`/despacho/instrucciones/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export function agregarItemInstruccion(
+  id: string,
+  data: {
+    tipo: InstruccionItemTipo;
+    refId?: string;
+    secretariaId?: string;
+    titulo?: string;
+    descripcion?: string;
+    prioridad?: "baja" | "media" | "alta";
+    fechaVencimiento?: string;
+    asignadoIds?: string[];
+  },
+) {
+  return request<InstruccionDetalle>(`/despacho/instrucciones/${id}/items`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function quitarItemInstruccion(id: string, itemId: string) {
+  return request<{ eliminado: boolean }>(`/despacho/instrucciones/${id}/items/${itemId}`, {
+    method: "DELETE",
+  });
+}
+
+export function marcarVistoInstruccion(id: string, tipo: "visto" | "acuse" = "visto") {
+  return request<{ ok: boolean }>(`/despacho/instrucciones/${id}/visto`, {
+    method: "POST",
+    body: JSON.stringify({ tipo }),
+  });
+}
+
+// ---- Notificaciones ----
+
+export interface Notificacion {
+  id: string;
+  tipo: string;
+  titulo: string;
+  cuerpo: string | null;
+  enlace: string | null;
+  origen_tipo: string | null;
+  origen_id: string | null;
+  leida: boolean;
+  leida_at: string | null;
+  created_at: string;
+}
+
+export function getNotificaciones(soloNoLeidas = false) {
+  return request<Notificacion[]>(`/notificaciones${soloNoLeidas ? "?soloNoLeidas=true" : ""}`);
+}
+
+export function getConteoNotificaciones() {
+  return request<{ noLeidas: number }>("/notificaciones/conteo");
+}
+
+export function marcarNotificacionLeida(id: string) {
+  return request<{ ok: boolean }>(`/notificaciones/${id}/leida`, { method: "POST" });
+}
+
+export function marcarTodasNotificacionesLeidas() {
+  return request<{ actualizadas: number }>("/notificaciones/leer-todas", { method: "POST" });
+}
