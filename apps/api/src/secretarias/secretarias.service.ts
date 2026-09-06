@@ -11,7 +11,7 @@ export class SecretariasService {
   findAll() {
     return this.tx
       .query(
-        `SELECT s.id, s.nombre, s.slug, s.activa,
+        `SELECT s.id, s.nombre, s.slug, s.descripcion, s.activa,
                 (SELECT count(*) FROM publicaciones p WHERE p.secretaria_id = s.id)::int AS publicaciones_visibles
          FROM secretarias s
          ORDER BY s.nombre`,

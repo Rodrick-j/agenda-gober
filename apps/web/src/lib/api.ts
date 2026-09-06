@@ -90,12 +90,33 @@ export interface Secretaria {
   id: string;
   nombre: string;
   slug: string;
+  descripcion: string | null;
   activa: boolean;
   publicaciones_visibles: number;
 }
 
 export function getSecretarias() {
   return request<Secretaria[]>("/secretarias");
+}
+
+export interface CrearSecretariaInput {
+  nombre: string;
+  slug: string;
+  descripcion?: string;
+}
+
+export interface ActualizarSecretariaInput {
+  nombre?: string;
+  descripcion?: string;
+  activa?: boolean;
+}
+
+export function crearSecretaria(data: CrearSecretariaInput) {
+  return request<Secretaria>("/admin/secretarias", { method: "POST", body: JSON.stringify(data) });
+}
+
+export function actualizarSecretaria(id: string, data: ActualizarSecretariaInput) {
+  return request<Secretaria>(`/admin/secretarias/${id}`, { method: "PATCH", body: JSON.stringify(data) });
 }
 
 export interface RegistroAuditoria {

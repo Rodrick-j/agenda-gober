@@ -104,6 +104,29 @@ binario. Verificado: los 5 registros que deja crear→ascender→resetear
 clave→desactivar no traen esa columna ni en `datos_nuevos` ni en
 `datos_anteriores`.
 
+## Secretarías reales
+
+`db/migrations/014_secretarias_reales.sql` reemplazó las 6 secretarías de
+demo por las 10 reales de la Gobernación de Oruro (SG, SDDPI, SDCT, SDOP,
+SDMMRE, SDMAAMT, SDDSSA, SDPD, SDAJ, SDAFP) más `descripcion` (nueva
+columna) para el nombre completo. Nada se borró: `Obras Publicas` →
+`SDOP`, `Finanzas` → `SDAFP` y `Desarrollo Productivo` → `SDDPI` se
+renombraron **en el mismo id** para que los usuarios de prueba ya creados
+sigan apuntando a la secretaría correcta; `Salud`/`Educacion` (sin
+equivalente real) quedaron desactivadas, no borradas. `Comunicacion` se
+mantuvo activa aunque no aparece en el organigrama oficial de secretarías,
+porque es una unidad real de trabajo.
+
+Re-verificado con curl después del reemplazo (secretaría no es más que un
+UUID para RLS, así que esto no debería cambiar nada — y no cambió):
+publicación/tarea/proyecto creados por `SDOP` siguen invisibles para
+`SDAJ` exactamente igual que antes con los nombres de prueba.
+
+Ahora `POST/PATCH /admin/secretarias` (mismo `RolesGuard` de admin) permite
+crear o editar secretarías desde `/secretarias` en el frontend (los
+controles de edición solo aparecen si sos admin) — el próximo cambio de
+organigrama no debería necesitar SQL a mano.
+
 ## Permisos finos (rol × nivel de confidencialidad)
 
 Esto vive en la base de datos (`db/migrations/005_permisos_finos.sql`), no en

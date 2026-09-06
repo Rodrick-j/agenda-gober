@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import * as bcrypt from 'bcrypt';
 import { TxService } from '../context/tx.service';
 import { ActualizarUsuarioDto, CrearUsuarioDto, ResetPasswordDto, RolNombre } from './dto/usuario.dto';
+import { ActualizarSecretariaDto, CrearSecretariaDto } from './dto/secretaria.dto';
 
 const ROLES_TRANSVERSALES = [RolNombre.GOBERNADOR, RolNombre.JEFE_GABINETE, RolNombre.ADMIN];
 
@@ -140,5 +141,60 @@ export class AdminService {
     const passwordHash = await bcrypt.hash(dto.password, 10);
     await this.tx.query(`UPDATE usuarios SET password_hash = $1 WHERE id = $2`, [passwordHash, id]);
     return { ok: true };
+  }
+
+  // Justo lo que forzó el reemplazo manual de las 6 secretarías de prueba
+  // por las 10 reales: sin esto, cualquier cambio de organigrama (una
+  // secretaría nueva, un renombre) necesita que alguien corra SQL a mano.
+  async crearSecretaria(dto: CrearSecretariaDto) {
+    try {
+      const { rows } = await this.tx.query(
+        `INSERT INTO secretarias (nombre, slug, descripcion) VALUES ($1, $2, $3)
+         RETURNING id, nombre, slug, descripcion, activa`,
+        [dto.nombre, dto.slug, dto.descripcion ?? null],
+      );
+      return rows[0];
+    } catch (err) {
+      if ((err as { code?: string }).code === '23505') {
+        throw new ConflictException('Ya existe una secretaría con ese nombre o slug');
+      }
+      throw err;
+    }
+  }
+
+  async actualizarSecretaria(id: string, dto: ActualizarSecretariaDto) {
+    const campos: string[] = [];
+    const valores: unknown[] = [];
+    let i = 1;
+    if (dto.nombre !== undefined) {
+      campos.push(`nombre = $${i++}`);
+      valores.push(dto.nombre);
+    }
+    if (dto.descripcion !== undefined) {
+      campos.push(`descripcion = $${i++}`);
+      valores.push(dto.descripcion);
+    }
+    if (dto.activa !== undefined) {
+      campos.push(`activa = $${i++}`);
+      valores.push(dto.activa);
+    }
+    if (campos.length === 0) throw new BadRequestException('Nada para actualizar');
+
+    valores.push(id);
+    try {
+      const { rows } = await this.tx.query(
+        `UPDATE secretarias SET ${campos.join(', ')} WHERE id = $${i}
+         RETURNING id, nombre, slug, descripcion, activa`,
+        valores,
+      );
+      if (rows.length === 0) throw new NotFoundException('Secretaría no encontrada');
+      return rows[0];
+    } catch (err) {
+      if (err instanceof NotFoundException) throw err;
+      if ((err as { code?: string }).code === '23505') {
+        throw new ConflictException('Ya existe una secretaría con ese nombre');
+      }
+      throw err;
+    }
   }
 }
