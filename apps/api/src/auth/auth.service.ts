@@ -1,7 +1,7 @@
 import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
-import * as bcrypt from 'bcrypt';
 import { Pool } from 'pg';
+import { verifyPassword } from '../common/password.util';
 import { PG_POOL } from '../database/database.module';
 import { LoginDto } from './dto/login.dto';
 
@@ -39,7 +39,7 @@ export class AuthService {
     }
 
     const user = rows[0];
-    const matches = await bcrypt.compare(dto.password, user.password_hash);
+    const matches = await verifyPassword(dto.password, user.password_hash);
     if (!matches) {
       throw invalid();
     }

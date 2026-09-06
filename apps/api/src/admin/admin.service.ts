@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import * as bcrypt from 'bcrypt';
+import { hashPassword } from '../common/password.util';
 import { TxService } from '../context/tx.service';
 import { ActualizarUsuarioDto, CrearUsuarioDto, ResetPasswordDto, RolNombre } from './dto/usuario.dto';
 import { ActualizarSecretariaDto, CrearSecretariaDto } from './dto/secretaria.dto';
@@ -53,7 +53,7 @@ export class AdminService {
     if (rolRows.length === 0) throw new BadRequestException('Rol desconocido');
     const rolId = rolRows[0].id;
 
-    const passwordHash = await bcrypt.hash(dto.password, 10);
+    const passwordHash = await hashPassword(dto.password);
     const secretariaId = dto.secretariaId ?? null;
 
     try {
@@ -138,7 +138,7 @@ export class AdminService {
 
   async resetPassword(id: string, dto: ResetPasswordDto) {
     await this.obtener(id);
-    const passwordHash = await bcrypt.hash(dto.password, 10);
+    const passwordHash = await hashPassword(dto.password);
     await this.tx.query(`UPDATE usuarios SET password_hash = $1 WHERE id = $2`, [passwordHash, id]);
     return { ok: true };
   }
