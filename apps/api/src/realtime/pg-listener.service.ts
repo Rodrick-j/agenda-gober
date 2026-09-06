@@ -69,6 +69,24 @@ const CANALES: Record<string, CanalConfig> = {
             FROM compromisos c LEFT JOIN usuarios u ON u.id = c.responsable_id
             WHERE c.id = $1`,
   },
+  // Despacho: la instruccion solo la re-consulta bajo RLS un socket
+  // transversal (instrucciones_select); el resto no recibe nada.
+  instrucciones_cambios: {
+    socketEvent: 'instruccion:cambio',
+    payloadKey: 'instruccion',
+    query: `SELECT id, titulo, objetivo, prioridad, fecha_limite, estado, emitida_por, organiza_id,
+                   avance_porcentaje, en_riesgo, created_at, updated_at
+            FROM instrucciones WHERE id = $1`,
+  },
+  // notificaciones tiene RLS por usuario_id: la re-consulta solo devuelve
+  // fila para el socket del destinatario, asi que el evento llega a esa
+  // persona y a nadie mas -- sin logica extra de filtrado en TypeScript.
+  notificaciones_cambios: {
+    socketEvent: 'notificacion:nueva',
+    payloadKey: 'notificacion',
+    query: `SELECT id, tipo, titulo, cuerpo, enlace, origen_tipo, origen_id, leida, leida_at, created_at
+            FROM notificaciones WHERE id = $1`,
+  },
 };
 
 // LISTEN necesita una conexión propia y de larga duración -- no se puede
