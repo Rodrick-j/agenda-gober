@@ -2,15 +2,17 @@
 
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { io, type Socket } from "socket.io-client";
-import { API_URL, type Evento, type Publicacion } from "@/lib/api";
+import { API_URL, type Evento, type Publicacion, type Tarea } from "@/lib/api";
 
 type CambioHandler = (payload: { accion: string; publicacion?: Publicacion; id?: string }) => void;
 type EventoCambioHandler = (payload: { accion: string; evento?: Evento; id?: string }) => void;
+type TareaCambioHandler = (payload: { accion: string; tarea?: Tarea; id?: string }) => void;
 
 interface RealtimeCtx {
   conectado: boolean;
   onCambio: (handler: CambioHandler) => () => void;
   onEventoCambio: (handler: EventoCambioHandler) => () => void;
+  onTareaCambio: (handler: TareaCambioHandler) => () => void;
 }
 
 const Ctx = createContext<RealtimeCtx | null>(null);
@@ -22,6 +24,7 @@ export function RealtimeProvider({ token, children }: { token: string; children:
   const [conectado, setConectado] = useState(false);
   const handlers = useRef(new Set<CambioHandler>());
   const eventoHandlers = useRef(new Set<EventoCambioHandler>());
+  const tareaHandlers = useRef(new Set<TareaCambioHandler>());
 
   useEffect(() => {
     const socket: Socket = io(API_URL, { auth: { token } });
@@ -32,6 +35,9 @@ export function RealtimeProvider({ token, children }: { token: string; children:
     });
     socket.on("evento:cambio", (payload: { accion: string; evento?: Evento; id?: string }) => {
       eventoHandlers.current.forEach((h) => h(payload));
+    });
+    socket.on("tarea:cambio", (payload: { accion: string; tarea?: Tarea; id?: string }) => {
+      tareaHandlers.current.forEach((h) => h(payload));
     });
     return () => {
       socket.disconnect();
@@ -52,7 +58,14 @@ export function RealtimeProvider({ token, children }: { token: string; children:
     };
   }, []);
 
-  return <Ctx.Provider value={{ conectado, onCambio, onEventoCambio }}>{children}</Ctx.Provider>;
+  const onTareaCambio = useCallback((handler: TareaCambioHandler) => {
+    tareaHandlers.current.add(handler);
+    return () => {
+      tareaHandlers.current.delete(handler);
+    };
+  }, []);
+
+  return <Ctx.Provider value={{ conectado, onCambio, onEventoCambio, onTareaCambio }}>{children}</Ctx.Provider>;
 }
 
 export function useRealtime(): RealtimeCtx {

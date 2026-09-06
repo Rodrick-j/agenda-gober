@@ -26,7 +26,7 @@ const NAV_GESTION: NavItem[] = [
   { href: "/secretarias", label: "Secretarías", icon: "building" },
   { href: "/auditoria", label: "Auditoría", icon: "audit", soloTransversal: true },
   { label: "Proyectos", icon: "folder", badge: "Pronto" },
-  { label: "Tareas", icon: "tasks", badge: "Pronto" },
+  { href: "/tareas", label: "Tareas", icon: "tasks" },
   { label: "Indicadores", icon: "chart", badge: "Pronto" },
 ];
 

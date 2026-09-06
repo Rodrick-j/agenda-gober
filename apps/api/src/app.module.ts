@@ -9,6 +9,7 @@ import { AuditoriaModule } from './auditoria/auditoria.module';
 import { SecretariasModule } from './secretarias/secretarias.module';
 import { DocumentosModule } from './documentos/documentos.module';
 import { EventosModule } from './eventos/eventos.module';
+import { TareasModule } from './tareas/tareas.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RealtimeModule } from './realtime/realtime.module';
@@ -25,6 +26,7 @@ import { HealthController } from './health.controller';
     SecretariasModule,
     DocumentosModule,
     EventosModule,
+    TareasModule,
     RealtimeModule,
   ],
   controllers: [HealthController],

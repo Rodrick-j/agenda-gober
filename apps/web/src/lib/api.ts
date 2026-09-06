@@ -189,3 +189,48 @@ export function actualizarEvento(token: string, id: string, data: Partial<CrearE
 export function eliminarEvento(token: string, id: string) {
   return request<{ eliminado: boolean }>(`/eventos/${id}`, { method: "DELETE" }, token);
 }
+
+export type TareaEstado = "pendiente" | "en_progreso" | "completada" | "cancelada";
+export type TareaPrioridad = "baja" | "media" | "alta";
+
+export interface Tarea {
+  id: string;
+  secretaria_id: string | null;
+  titulo: string;
+  descripcion: string | null;
+  estado: TareaEstado;
+  prioridad: TareaPrioridad;
+  fecha_vencimiento: string | null;
+  nivel_confidencialidad: NivelConfidencialidad;
+  creado_por: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CrearTareaInput {
+  titulo: string;
+  descripcion?: string;
+  prioridad?: TareaPrioridad;
+  fechaVencimiento?: string;
+  nivelConfidencialidad: NivelConfidencialidad;
+}
+
+export function getTareas(token: string) {
+  return request<Tarea[]>("/tareas", {}, token);
+}
+
+export function crearTarea(token: string, data: CrearTareaInput) {
+  return request<Tarea>("/tareas", { method: "POST", body: JSON.stringify(data) }, token);
+}
+
+export function actualizarTarea(
+  token: string,
+  id: string,
+  data: Partial<CrearTareaInput> & { estado?: TareaEstado },
+) {
+  return request<Tarea>(`/tareas/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token);
+}
+
+export function eliminarTarea(token: string, id: string) {
+  return request<{ eliminado: boolean }>(`/tareas/${id}`, { method: "DELETE" }, token);
+}

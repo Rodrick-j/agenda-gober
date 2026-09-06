@@ -127,6 +127,33 @@ de invitación sin pasar por esa función (si no, no hay forma de que
 `eventos_select` descubra que está invitado) — por eso la política tiene esa
 excepción explícita. Todo el razonamiento queda comentado en la migración.
 
+## Tareas
+
+`db/migrations/009_tareas.sql`. Mismo esqueleto que Agenda: secretaría +
+rango vs. confidencialidad, más una vía de "asignado" (`tarea_asignados`,
+igual patrón que `evento_responsables`, con el mismo fix de recursión vía
+`fn_tarea_visible_para_actual` SECURITY DEFINER) para poder asignarle una
+tarea a alguien de otra secretaría.
+
+- `GET /tareas?estado=` — lista (opcionalmente filtrada por estado, para el tablero)
+- `GET /tareas/:id` — incluye el listado de asignados
+- `POST /tareas`, `PATCH /tareas/:id`, `DELETE /tareas/:id`
+- `PUT /tareas/:id/asignados` — reemplaza el set completo de asignados
+
+**Diferencia clave con Agenda:** en eventos, solo rango `director`+ puede
+editar. En tareas, un asignado sin ese rango también puede entrar a `UPDATE`
+(para poder marcar su propia tarea como en progreso/completada) — pero
+`RLS` sola no puede limitar qué columnas toca esa persona, porque no compara
+fila vieja vs. nueva. Por eso hay un trigger, `fn_validar_edicion_tarea`
+(mismo mecanismo que `fn_validar_transicion_publicacion` en 005): si quien
+edita es transversal o director+/secretario de la secretaría dueña, edita la
+fila entera; si solo llegó ahí por estar asignado, el trigger revienta con
+`RAISE EXCEPTION` en cuanto detecta que cambió algo más que `estado`.
+Verificado con curl: un operador asignado puede pasar su tarea a
+`en_progreso` (200), pero si en el mismo PATCH intenta cambiar también el
+`titulo` la operación entera se rechaza con 403 — no se aplica el cambio de
+estado a medias, porque es una sola transacción.
+
 ## Tiempo real
 
 WebSocket (`socket.io`) en el mismo puerto. El cliente se conecta con
@@ -151,9 +178,10 @@ el `id` "pelado" (sin contenido) a **todos** los sockets conectados — no
 revela nada sensible, solo que ese id dejó de existir — y cada cliente lo
 saca de su vista si lo tenía cargado.
 
-Eventos emitidos: `publicacion:cambio` con `{ accion, publicacion? , id? }` y
-`evento:cambio` con `{ accion, evento?, id? }` (`publicacion`/`evento` solo
-vienen en INSERT/UPDATE; en DELETE solo viene `id`).
+Eventos emitidos: `publicacion:cambio` con `{ accion, publicacion? , id? }`,
+`evento:cambio` con `{ accion, evento?, id? }` y `tarea:cambio` con
+`{ accion, tarea?, id? }` (el objeto de datos solo viene en INSERT/UPDATE;
+en DELETE solo viene `id`).
 
 Pruebas manuales:
 
@@ -161,6 +189,7 @@ Pruebas manuales:
 npm run start   # en una terminal
 node test-realtime.manual.js            # publicaciones: secretaría + confidencialidad
 node test-realtime-eventos.manual.js    # eventos: creación y borrado (aviso sin contenido)
+node test-realtime-tareas.manual.js     # tareas: creación y borrado, aislado por secretaría
 ```
 
 ## Arrancar
