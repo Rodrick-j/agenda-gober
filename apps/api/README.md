@@ -218,6 +218,16 @@ tarea a alguien de otra secretaría.
 - `POST /tareas`, `PATCH /tareas/:id`, `DELETE /tareas/:id`
 - `PUT /tareas/:id/asignados` — reemplaza el set completo de asignados
 
+`GET /secretarias/miembros` resuelve quién puede aparecer en el selector de
+responsable del frontend: tu propia secretaría (o todo el mundo si sos
+transversal) — mismo espíritu que el "creador + invitados" de Reuniones,
+evita necesitar un directorio completo de usuarios para una casilla de
+asignación. `GET /tareas` ahora también agrega los asignados de cada fila
+en la misma consulta (json_agg correlacionado, sin N+1 por tarjeta del
+tablero) — y el canal de tiempo real (`pg-listener.service.ts`) usa la
+misma agregación, así que una tarea que llega por WebSocket ya trae quién
+la tiene asignada.
+
 **Diferencia clave con Agenda:** en eventos, solo rango `director`+ puede
 editar. En tareas, un asignado sin ese rango también puede entrar a `UPDATE`
 (para poder marcar su propia tarea como en progreso/completada) — pero

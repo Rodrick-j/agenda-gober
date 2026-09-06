@@ -9,6 +9,23 @@ const SELECT_FIELDS = `
   nivel_confidencialidad, creado_por, created_at, updated_at
 `;
 
+// Trae los asignados agregados en la misma consulta (nada de N+1 por
+// tarjeta del tablero). La subquery corre bajo la misma RLS de siempre: si
+// quien mira solo puede ver la tarea por estar asignado (no por secretaría/
+// rango), tarea_asignados_select solo le deja ver SU PROPIA fila -- ve un
+// array con un solo nombre en vez del listado completo. Mismo límite ya
+// documentado para los invitados de Agenda, no es un bug nuevo.
+const SELECT_CON_ASIGNADOS = `
+  t.id, t.secretaria_id, t.titulo, t.descripcion, t.estado, t.prioridad, t.fecha_vencimiento,
+  t.nivel_confidencialidad, t.creado_por, t.created_at, t.updated_at,
+  COALESCE(
+    (SELECT json_agg(json_build_object('id', u.id, 'nombre', u.nombre) ORDER BY u.nombre)
+     FROM tarea_asignados ta JOIN usuarios u ON u.id = ta.usuario_id
+     WHERE ta.tarea_id = t.id),
+    '[]'
+  ) AS asignados
+`;
+
 @Injectable()
 export class TareasService {
   constructor(private readonly tx: TxService) {}
@@ -17,9 +34,9 @@ export class TareasService {
   // eventos_agenda. estado es opcional para poder pintar un tablero por columna.
   async listar(estado?: string) {
     const { rows } = await this.tx.query(
-      `SELECT ${SELECT_FIELDS} FROM tareas
-       WHERE $1::tarea_estado IS NULL OR estado = $1::tarea_estado
-       ORDER BY fecha_vencimiento NULLS LAST, created_at DESC`,
+      `SELECT ${SELECT_CON_ASIGNADOS} FROM tareas t
+       WHERE $1::tarea_estado IS NULL OR t.estado = $1::tarea_estado
+       ORDER BY t.fecha_vencimiento NULLS LAST, t.created_at DESC`,
       [estado ?? null],
     );
     return rows;

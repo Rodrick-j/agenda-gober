@@ -41,9 +41,18 @@ const CANALES: Record<string, CanalConfig> = {
   tareas_cambios: {
     socketEvent: 'tarea:cambio',
     payloadKey: 'tarea',
-    query: `SELECT id, secretaria_id, titulo, descripcion, estado, prioridad, fecha_vencimiento,
-                   nivel_confidencialidad, creado_por, created_at, updated_at
-            FROM tareas WHERE id = $1`,
+    // asignados agregado en la misma query (igual que TareasService.listar):
+    // si a alguien le reasignan un responsable después de crearla, la
+    // próxima notificación (la del propio PATCH) ya lo refleja.
+    query: `SELECT t.id, t.secretaria_id, t.titulo, t.descripcion, t.estado, t.prioridad, t.fecha_vencimiento,
+                   t.nivel_confidencialidad, t.creado_por, t.created_at, t.updated_at,
+                   COALESCE(
+                     (SELECT json_agg(json_build_object('id', u.id, 'nombre', u.nombre) ORDER BY u.nombre)
+                      FROM tarea_asignados ta JOIN usuarios u ON u.id = ta.usuario_id
+                      WHERE ta.tarea_id = t.id),
+                     '[]'
+                   ) AS asignados
+            FROM tareas t WHERE t.id = $1`,
   },
   proyectos_cambios: {
     socketEvent: 'proyecto:cambio',

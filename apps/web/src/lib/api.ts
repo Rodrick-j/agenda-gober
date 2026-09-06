@@ -246,6 +246,11 @@ export function eliminarEvento(id: string) {
 export type TareaEstado = "pendiente" | "en_progreso" | "completada" | "cancelada";
 export type TareaPrioridad = "baja" | "media" | "alta";
 
+export interface TareaAsignado {
+  id: string;
+  nombre: string;
+}
+
 export interface Tarea {
   id: string;
   secretaria_id: string | null;
@@ -258,6 +263,7 @@ export interface Tarea {
   creado_por: string | null;
   created_at: string;
   updated_at: string;
+  asignados: TareaAsignado[];
 }
 
 export interface CrearTareaInput {
@@ -266,6 +272,7 @@ export interface CrearTareaInput {
   prioridad?: TareaPrioridad;
   fechaVencimiento?: string;
   nivelConfidencialidad: NivelConfidencialidad;
+  asignadoIds?: string[];
 }
 
 export function getTareas() {
@@ -276,12 +283,26 @@ export function crearTarea(data: CrearTareaInput) {
   return request<Tarea>("/tareas", { method: "POST", body: JSON.stringify(data) });
 }
 
-export function actualizarTarea(id: string, data: Partial<CrearTareaInput> & { estado?: TareaEstado }) {
+export function actualizarTarea(
+  id: string,
+  data: Partial<Omit<CrearTareaInput, "asignadoIds">> & { estado?: TareaEstado },
+) {
   return request<Tarea>(`/tareas/${id}`, { method: "PATCH", body: JSON.stringify(data) });
 }
 
 export function eliminarTarea(id: string) {
   return request<{ eliminado: boolean }>(`/tareas/${id}`, { method: "DELETE" });
+}
+
+export function asignarTarea(id: string, usuarioIds: string[]) {
+  return request<{ actualizado: boolean }>(`/tareas/${id}/asignados`, {
+    method: "PUT",
+    body: JSON.stringify({ usuarioIds }),
+  });
+}
+
+export function getMiembros() {
+  return request<Participante[]>("/secretarias/miembros");
 }
 
 export interface GabineteSecretariaResumen {
