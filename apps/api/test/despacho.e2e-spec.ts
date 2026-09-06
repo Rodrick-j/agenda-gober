@@ -27,6 +27,7 @@ describe('Despacho — instrucciones / rollup / notificaciones', () => {
   let uOperadorA: string;
   let tareaId: string;
   let instruccionId: string;
+  let itemId: string;
 
   async function setContext(rol: string, secretariaId: string, userId: string) {
     await db.query(
@@ -100,7 +101,8 @@ describe('Despacho — instrucciones / rollup / notificaciones', () => {
     uSecretarioA = await crearUsuario('Secretario A', 'secretario', secretariaA);
     uOperadorA = await crearUsuario('Operador A', 'operador', secretariaA);
 
-    // Una tarea de la secretaría A, todavía sin vincular a ninguna instrucción.
+    // Una tarea de la secretaría A, con el secretario como asignado (así lo
+    // hace el desglose real: la persona responsable está en tarea_asignados).
     await setContext('secretario', secretariaA, uSecretarioA);
     const t = await db.query<{ id: string }>(
       `INSERT INTO tareas (secretaria_id, titulo, descripcion, nivel_confidencialidad, creado_por)
@@ -108,6 +110,10 @@ describe('Despacho — instrucciones / rollup / notificaciones', () => {
       [secretariaA, `Tarea despacho ${rand}`, uSecretarioA],
     );
     tareaId = t.rows[0].id;
+    await db.query(`INSERT INTO tarea_asignados (tarea_id, usuario_id) VALUES ($1, $2)`, [
+      tareaId,
+      uSecretarioA,
+    ]);
   });
 
   afterAll(async () => {
@@ -168,22 +174,85 @@ describe('Despacho — instrucciones / rollup / notificaciones', () => {
 
   it('al vincular una tarea, el avance se recalcula solo (pendiente → 0, en_ejecucion)', async () => {
     await setContext('jefe_gabinete', '', uJefe);
-    await db.query(
+    const { rows } = await db.query<{ id: string }>(
       `INSERT INTO instruccion_items (instruccion_id, tipo, ref_id, secretaria_id)
-       VALUES ($1, 'tarea', $2, $3)`,
+       VALUES ($1, 'tarea', $2, $3) RETURNING id`,
       [instruccionId, tareaId, secretariaA],
     );
+    itemId = rows[0].id;
     expect(await instruccion('avance_porcentaje')).toBe(0);
     expect(await instruccion('estado')).toBe('en_ejecucion');
   });
 
-  it('cuando la secretaría completa la tarea, la instrucción pasa sola a cumplida', async () => {
+  it('completar la tarea NO cierra la instrucción: queda pendiente de validación', async () => {
     await setContext('secretario', secretariaA, uSecretarioA);
     await db.query(`UPDATE tareas SET estado = 'completada' WHERE id = $1`, [tareaId]);
 
     await setContext('gobernador', '', uGobernador);
     expect(await instruccion('avance_porcentaje')).toBe(100);
+    // el trabajo está hecho, pero Gabinete todavía no validó
+    expect(await instruccion('estado')).toBe('en_ejecucion');
+  });
+
+  it('pedir la validación sin evidencia se rechaza', async () => {
+    await setContext('secretario', secretariaA, uSecretarioA);
+    await expectReject(
+      () =>
+        db.query(`UPDATE instruccion_items SET estado_validacion = 'pendiente_validacion' WHERE id = $1`, [
+          itemId,
+        ]),
+      'evidencia',
+    );
+  });
+
+  it('con evidencia adjunta, el responsable sí puede pedir la validación', async () => {
+    await setContext('secretario', secretariaA, uSecretarioA);
+    await db.query(
+      `INSERT INTO item_evidencias (item_id, tipo, nombre_archivo, mime, tamano_bytes, contenido, subido_por)
+       VALUES ($1, 'informe', 'informe.pdf', 'application/pdf', 3, $2, $3)`,
+      [itemId, Buffer.from('pdf'), uSecretarioA],
+    );
+    await db.query(`UPDATE instruccion_items SET estado_validacion = 'pendiente_validacion' WHERE id = $1`, [
+      itemId,
+    ]);
+    const { rows } = await db.query('SELECT estado_validacion AS v FROM instruccion_items WHERE id = $1', [
+      itemId,
+    ]);
+    expect(rows[0].v).toBe('pendiente_validacion');
+  });
+
+  it('devolver un ítem sin motivo se rechaza', async () => {
+    await setContext('jefe_gabinete', '', uJefe);
+    await expectReject(
+      () => db.query(`UPDATE instruccion_items SET estado_validacion = 'devuelto' WHERE id = $1`, [itemId]),
+      'motivo',
+    );
+  });
+
+  it('cuando Gabinete valida el ítem, la instrucción pasa sola a cumplida', async () => {
+    await setContext('jefe_gabinete', '', uJefe);
+    await db.query(
+      `UPDATE instruccion_items
+       SET estado_validacion = 'validado', validado_por = $2, validado_at = now()
+       WHERE id = $1`,
+      [itemId, uJefe],
+    );
+
+    await setContext('gobernador', '', uGobernador);
+    expect(await instruccion('avance_porcentaje')).toBe(100);
     expect(await instruccion('estado')).toBe('cumplida');
+  });
+
+  it('la bitácora registró el circuito con actor y acción', async () => {
+    await setContext('gobernador', '', uGobernador);
+    const { rows } = await db.query<{ accion: string }>(
+      `SELECT accion FROM instruccion_bitacora WHERE instruccion_id = $1 ORDER BY created_at`,
+      [instruccionId],
+    );
+    const acciones = rows.map((r) => r.accion);
+    expect(acciones).toEqual(
+      expect.arrayContaining(['emitida', 'item_agregado', 'validacion_solicitada', 'validado', 'cumplida']),
+    );
   });
 
   it('las notificaciones están aisladas por usuario', async () => {
@@ -202,12 +271,20 @@ describe('Despacho — instrucciones / rollup / notificaciones', () => {
     expect(propias.rows[0].n).toBe(1);
   });
 
-  it('una secretaría ve su tarea pero nunca el vínculo instruccion_items', async () => {
+  it('la secretaría ve su tarea y su propio ítem, pero nunca la instrucción madre', async () => {
     await setContext('secretario', secretariaA, uSecretarioA);
+
+    // su tarea
     const tarea = await db.query('SELECT count(*)::int AS n FROM tareas WHERE id = $1', [tareaId]);
     expect(tarea.rows[0].n).toBe(1);
-    const items = await db.query('SELECT count(*)::int AS n FROM instruccion_items');
-    expect(items.rows[0].n).toBe(0);
+
+    // su propio vínculo (para saber que está en un Despacho y su estado de validación)
+    const items = await db.query('SELECT count(*)::int AS n, estado_validacion FROM instruccion_items GROUP BY estado_validacion');
+    expect(items.rows).toEqual([{ n: 1, estado_validacion: 'validado' }]);
+
+    // pero NO la instrucción (título/objetivo confidenciales)
+    const instr = await db.query('SELECT count(*)::int AS n FROM instrucciones');
+    expect(instr.rows[0].n).toBe(0);
   });
 
   it('acuse de recibo: el Gobernador registra su "visto" sobre la instrucción', async () => {
