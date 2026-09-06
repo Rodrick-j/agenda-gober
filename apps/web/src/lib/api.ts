@@ -278,3 +278,51 @@ export interface GabineteResumen {
 export function getGabineteResumen(token: string) {
   return request<GabineteResumen>("/gabinete/resumen", {}, token);
 }
+
+export type ProyectoEstado = "planificacion" | "en_ejecucion" | "pausado" | "finalizado" | "cancelado";
+
+export interface Proyecto {
+  id: string;
+  secretaria_id: string | null;
+  nombre: string;
+  descripcion: string | null;
+  estado: ProyectoEstado;
+  avance_porcentaje: number;
+  presupuesto: string | null;
+  fecha_inicio: string | null;
+  fecha_fin_estimada: string | null;
+  nivel_confidencialidad: NivelConfidencialidad;
+  creado_por: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CrearProyectoInput {
+  nombre: string;
+  descripcion?: string;
+  presupuesto?: number;
+  fechaInicio?: string;
+  fechaFinEstimada?: string;
+  nivelConfidencialidad: NivelConfidencialidad;
+}
+
+export interface ActualizarProyectoInput extends Partial<CrearProyectoInput> {
+  estado?: ProyectoEstado;
+  avancePorcentaje?: number;
+}
+
+export function getProyectos(token: string) {
+  return request<Proyecto[]>("/proyectos", {}, token);
+}
+
+export function crearProyecto(token: string, data: CrearProyectoInput) {
+  return request<Proyecto>("/proyectos", { method: "POST", body: JSON.stringify(data) }, token);
+}
+
+export function actualizarProyecto(token: string, id: string, data: ActualizarProyectoInput) {
+  return request<Proyecto>(`/proyectos/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token);
+}
+
+export function eliminarProyecto(token: string, id: string) {
+  return request<{ eliminado: boolean }>(`/proyectos/${id}`, { method: "DELETE" }, token);
+}

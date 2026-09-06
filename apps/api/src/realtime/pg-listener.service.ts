@@ -45,6 +45,13 @@ const CANALES: Record<string, CanalConfig> = {
                    nivel_confidencialidad, creado_por, created_at, updated_at
             FROM tareas WHERE id = $1`,
   },
+  proyectos_cambios: {
+    socketEvent: 'proyecto:cambio',
+    payloadKey: 'proyecto',
+    query: `SELECT id, secretaria_id, nombre, descripcion, estado, avance_porcentaje, presupuesto,
+                   fecha_inicio, fecha_fin_estimada, nivel_confidencialidad, creado_por, created_at, updated_at
+            FROM proyectos WHERE id = $1`,
+  },
 };
 
 // LISTEN necesita una conexión propia y de larga duración -- no se puede

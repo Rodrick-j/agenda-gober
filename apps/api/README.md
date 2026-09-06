@@ -154,6 +154,23 @@ Verificado con curl: un operador asignado puede pasar su tarea a
 `titulo` la operación entera se rechaza con 403 — no se aplica el cambio de
 estado a medias, porque es una sola transacción.
 
+## Proyectos
+
+`db/migrations/010_proyectos.sql`. Mismo criterio base que publicaciones
+(secretaría + rango vs. confidencialidad), sin la vía de "asignado" que sí
+tienen Agenda/Tareas — un proyecto pertenece a una sola secretaría. Editar
+(incluye `avance_porcentaje` y `estado`) exige rango `director`+, igual que
+Agenda: un operador no reprograma ni reporta avance de un proyecto por su
+cuenta. Verificado con curl: un operador que intenta `PATCH` recibe 404 (RLS
+filtra la fila antes de llegar al `UPDATE`, mismo comportamiento ya
+documentado en Agenda/Publicaciones), el secretario de la misma secretaría sí
+puede.
+
+- `GET /proyectos?estado=`, `GET /proyectos/:id`
+- `POST /proyectos`, `PATCH /proyectos/:id`, `DELETE /proyectos/:id`
+
+Tiempo real: canal `proyectos_cambios`, mismo patrón que el resto.
+
 ## Gabinete (panel agregado)
 
 `GET /gabinete/resumen`. Sin tablas propias: agrega `publicaciones`,
@@ -197,18 +214,18 @@ el `id` "pelado" (sin contenido) a **todos** los sockets conectados — no
 revela nada sensible, solo que ese id dejó de existir — y cada cliente lo
 saca de su vista si lo tenía cargado.
 
-Eventos emitidos: `publicacion:cambio` con `{ accion, publicacion? , id? }`,
-`evento:cambio` con `{ accion, evento?, id? }` y `tarea:cambio` con
-`{ accion, tarea?, id? }` (el objeto de datos solo viene en INSERT/UPDATE;
-en DELETE solo viene `id`).
+Eventos emitidos: `publicacion:cambio`, `evento:cambio`, `tarea:cambio` y
+`proyecto:cambio`, todos con la forma `{ accion, <clave>?, id? }` (el objeto
+de datos solo viene en INSERT/UPDATE; en DELETE solo viene `id`).
 
 Pruebas manuales:
 
 ```bash
 npm run start   # en una terminal
-node test-realtime.manual.js            # publicaciones: secretaría + confidencialidad
-node test-realtime-eventos.manual.js    # eventos: creación y borrado (aviso sin contenido)
-node test-realtime-tareas.manual.js     # tareas: creación y borrado, aislado por secretaría
+node test-realtime.manual.js             # publicaciones: secretaría + confidencialidad
+node test-realtime-eventos.manual.js     # eventos: creación y borrado (aviso sin contenido)
+node test-realtime-tareas.manual.js      # tareas: creación y borrado, aislado por secretaría
+node test-realtime-proyectos.manual.js   # proyectos: creación, avance y borrado
 ```
 
 ## Arrancar
