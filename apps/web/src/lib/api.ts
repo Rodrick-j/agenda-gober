@@ -35,13 +35,19 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     },
   });
 
+  // Nest manda el body totalmente vacío (Content-Length: 0) cuando un
+  // handler devuelve null -- no el string "null" -- así que res.json()
+  // revienta con "Unexpected end of JSON input". Se lee como texto primero
+  // y solo se parsea si hay algo, tanto acá como en la rama de error.
+  const text = await res.text();
+  const body = text ? JSON.parse(text) : null;
+
   if (!res.ok) {
-    const body = await res.json().catch(() => ({ message: res.statusText }));
-    const message = Array.isArray(body.message) ? body.message.join(", ") : body.message;
-    throw new ApiError(message ?? "Error inesperado", res.status);
+    const message = Array.isArray(body?.message) ? body.message.join(", ") : body?.message;
+    throw new ApiError(message ?? res.statusText ?? "Error inesperado", res.status);
   }
 
-  return res.json();
+  return body as T;
 }
 
 export interface SesionUsuario {
