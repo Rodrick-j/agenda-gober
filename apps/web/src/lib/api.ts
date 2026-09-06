@@ -421,3 +421,50 @@ export function actualizarCompromiso(
 export function eliminarCompromiso(id: string) {
   return request<{ eliminado: boolean }>(`/compromisos/${id}`, { method: "DELETE" });
 }
+
+export type RolNombre = "gobernador" | "jefe_gabinete" | "admin" | "secretario" | "director" | "operador";
+
+export interface UsuarioAdmin {
+  id: string;
+  nombre: string;
+  email: string;
+  secretaria_id: string | null;
+  secretaria_nombre: string | null;
+  activo: boolean;
+  created_at: string;
+  rol: RolNombre;
+}
+
+export interface CrearUsuarioInput {
+  nombre: string;
+  email: string;
+  password: string;
+  rol: RolNombre;
+  secretariaId?: string;
+}
+
+export interface ActualizarUsuarioInput {
+  nombre?: string;
+  rol?: RolNombre;
+  secretariaId?: string;
+  activo?: boolean;
+}
+
+export function getUsuarios() {
+  return request<UsuarioAdmin[]>("/admin/usuarios");
+}
+
+export function crearUsuario(data: CrearUsuarioInput) {
+  return request<UsuarioAdmin>("/admin/usuarios", { method: "POST", body: JSON.stringify(data) });
+}
+
+export function actualizarUsuario(id: string, data: ActualizarUsuarioInput) {
+  return request<UsuarioAdmin>(`/admin/usuarios/${id}`, { method: "PATCH", body: JSON.stringify(data) });
+}
+
+export function resetearPassword(id: string, password: string) {
+  return request<{ ok: boolean }>(`/admin/usuarios/${id}/reset-password`, {
+    method: "POST",
+    body: JSON.stringify({ password }),
+  });
+}

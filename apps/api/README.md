@@ -63,7 +63,46 @@ pentest (`../../pentest/REPORTE.md`), ahora sí en la superficie real
 Usuarios de prueba (contraseña `Password123!` para todos):
 `salud@test.local` (secretario), `salud.director@test.local` (director),
 `salud.operador@test.local` (operador), `obras@test.local` (secretario),
-`gobernador@test.local` (gobernador).
+`gobernador@test.local` (gobernador), `admin@test.local` (admin).
+
+## Super Administrador (gestión de usuarios)
+
+`/admin/usuarios` — único módulo del sistema donde la autorización **no** la
+decide una política RLS, sino un guard de NestJS (`RolesGuard` +
+`@Roles('admin')`, en `src/common/`). Es una excepción deliberada, no un
+descuido: `usuarios`/`usuario_roles` no pueden tener RLS porque
+`AuthService.login()` las consulta con el pool crudo, **antes** de que exista
+ningún contexto de sesión que una política pudiera evaluar (no hay
+`app.current_rol` seteado todavía — es el huevo y la gallina de la
+autenticación). El guard es, acá sí, la barrera real.
+
+A propósito restringido a `admin` y no a todo rol transversal: Gobernador y
+Jefe de Gabinete pueden ver todo el contenido estratégico sin por eso poder
+crear o desactivar cuentas — quien administra el sistema no tiene por qué
+ser quien lo usa. Verificado con curl: `gobernador@test.local` contra
+`GET /admin/usuarios` responde 403 aunque sea transversal.
+
+- `GET /admin/usuarios` — lista con rol y secretaría ya resueltos por join
+- `POST /admin/usuarios` — crea cuenta; rechaza con 400 si el rol es de
+  secretaría sin `secretariaId`, o si es transversal *con* uno
+- `PATCH /admin/usuarios/:id` — `rol` y `secretariaId` viajan juntos a
+  propósito (son interdependientes); reasignar el rol borra e inserta de
+  nuevo en `usuario_roles`, mismo patrón que `evento_responsables`/
+  `tarea_asignados`
+- `POST /admin/usuarios/:id/reset-password` — hashea con bcrypt, nunca en
+  texto plano ni en la respuesta
+
+Las cuentas se **desactivan** (`activo = false`), nunca se borran — borrar
+rompería todo lo que esa persona creó (`publicaciones.autor_id`,
+`tareas.creado_por`, etc.). Un usuario desactivado no puede loguearse
+(`AuthService.login` ya filtraba por `activo = true` desde el principio).
+
+Auditoría propia (`fn_auditoria_usuarios`, migración 012): audita alta,
+cambio de rol/secretaría y desactivación, pero **excluye `password_hash`**
+del JSON guardado — mismo criterio que documentos (007) excluyendo el
+binario. Verificado: los 5 registros que deja crear→ascender→resetear
+clave→desactivar no traen esa columna ni en `datos_nuevos` ni en
+`datos_anteriores`.
 
 ## Permisos finos (rol × nivel de confidencialidad)
 
