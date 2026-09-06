@@ -11,26 +11,61 @@ interface NavItem {
   href?: string;
   label: string;
   icon: IconName;
+  description?: string;
   soloTransversal?: boolean;
   soloAdmin?: boolean;
+  // Lista blanca de roles exactos. Más fino que soloTransversal (que incluye
+  // a admin): ej. Despacho es solo gobernador + jefe_gabinete.
+  roles?: string[];
   badge?: string;
 }
 
-const NAV_PRINCIPAL: NavItem[] = [
-  { href: "/dashboard", label: "Inicio", icon: "home" },
-  { href: "/agenda", label: "Agenda", icon: "calendar" },
-  { href: "/reuniones", label: "Reuniones", icon: "users" },
-  { href: "/gabinete", label: "Gabinete", icon: "briefcase", soloTransversal: true },
-];
+interface NavSeccion {
+  title: string;
+  items: NavItem[];
+}
 
-const NAV_GESTION: NavItem[] = [
-  { href: "/dashboard#publicaciones", label: "Publicaciones", icon: "megaphone" },
-  { href: "/secretarias", label: "Secretarías", icon: "building" },
-  { href: "/auditoria", label: "Auditoría", icon: "audit", soloTransversal: true },
-  { href: "/proyectos", label: "Proyectos", icon: "folder" },
-  { href: "/tareas", label: "Tareas", icon: "tasks" },
-  { href: "/indicadores", label: "Indicadores", icon: "chart" },
-  { href: "/admin/usuarios", label: "Usuarios", icon: "lock", soloAdmin: true },
+// Secciones por AUDIENCIA, no por tipo de dato:
+//  - Trabajo diario: lo usa todo el mundo (cada quien ve lo suyo por RLS).
+//  - Gestión de mi área: contenido/obras/números de la propia secretaría
+//    (o de UNICOM). Los transversales acá ven el agregado.
+//  - Dirección institucional: solo autoridades (gobernador/jefe_gabinete) y
+//    admin -- paneles que cruzan todas las secretarías.
+//  - Sistema: solo admin.
+// Esto solo ordena qué se muestra; la barrera real es la RLS del backend.
+const SECCIONES: NavSeccion[] = [
+  {
+    title: "Trabajo diario",
+    items: [
+      { href: "/dashboard", label: "Inicio", icon: "home", description: "Resumen principal y estado del sistema" },
+      { href: "/agenda", label: "Agenda", icon: "calendar", description: "Calendario de actividades y compromisos" },
+      { href: "/reuniones", label: "Reuniones", icon: "users", description: "Actas y compromisos de reuniones" },
+      { href: "/tareas", label: "Tareas", icon: "tasks", description: "Pendientes propios y encargos recibidos" },
+    ],
+  },
+  {
+    title: "Gestión de mi área",
+    items: [
+      { href: "/dashboard#publicaciones", label: "Publicaciones", icon: "megaphone", description: "Comunicados y documentos del área" },
+      { href: "/proyectos", label: "Proyectos", icon: "folder", description: "Obras y programas del área, con avance" },
+      { href: "/indicadores", label: "Indicadores", icon: "chart", description: "Métricas de gestión: tu área o el consolidado" },
+    ],
+  },
+  {
+    title: "Dirección institucional",
+    items: [
+      { href: "/despacho", label: "Despacho", icon: "layers", description: "Instrucciones del Gobernador y su seguimiento", roles: ["gobernador", "jefe_gabinete"] },
+      { href: "/gabinete", label: "Gabinete", icon: "briefcase", description: "Estado agregado de todas las secretarías", soloTransversal: true },
+      { href: "/auditoria", label: "Auditoría", icon: "audit", description: "Registro de acciones y trazabilidad", soloTransversal: true },
+      { href: "/secretarias", label: "Secretarías", icon: "building", description: "Catálogo de dependencias", soloTransversal: true },
+    ],
+  },
+  {
+    title: "Sistema",
+    items: [
+      { href: "/admin/usuarios", label: "Usuarios", icon: "lock", description: "Control de accesos y permisos", soloAdmin: true },
+    ],
+  },
 ];
 
 interface Props {
@@ -65,14 +100,15 @@ function MenuGroup({ title, items, pathname, onNavigate }: { title: string; item
             activo
               ? "sidebar-nav-active border border-[#37F0FC]/25 bg-gradient-to-r from-[#0A70D6] to-[#0451A5] text-[#E3EAEF] shadow-[0_8px_24px_rgba(10,112,214,.28)]"
               : item.href
-                ? "border border-transparent text-[#9DA9BB] hover:translate-x-1 hover:border-[#7CC7F6]/15 hover:bg-[#043472]/65 hover:text-[#E3EAEF]"
-                : "cursor-not-allowed border border-transparent text-[#9DA9BB]/45"
+                ? "border border-[#7CC7F6]/15 bg-[#02183A]/40 text-[#9DA9BB] hover:translate-x-1 hover:border-[#7CC7F6]/30 hover:bg-[#043472]/70 hover:text-[#E3EAEF]"
+                : "cursor-not-allowed border border-[#7CC7F6]/5 bg-[#02183A]/20 text-[#9DA9BB]/45"
           } ${presionado ? "sidebar-nav-pressed" : ""}`;
 
           return item.href ? (
             <Link
               key={item.label}
               href={item.href}
+              title={item.description}
               onPointerDown={() => setPressedHref(item.href ?? null)}
               onClick={onNavigate}
               onAnimationEnd={(event) => {
@@ -95,12 +131,21 @@ export function InstitutionalSidebar({ rol, onNavigate, onCollapse }: Props) {
   const pathname = usePathname();
   const esTransversal = rangoDeRol(rol) >= 99;
   const esAdmin = rol === "admin";
-  const principal = NAV_PRINCIPAL.filter((item) => !item.soloTransversal || esTransversal);
-  const gestion = NAV_GESTION.filter((item) => (!item.soloTransversal || esTransversal) && (!item.soloAdmin || esAdmin));
+  // Filtra los items por rol y descarta las secciones que quedan vacías
+  // (ej. un operador no ve "Dirección institucional" ni "Sistema").
+  const secciones = SECCIONES.map((seccion) => ({
+    ...seccion,
+    items: seccion.items.filter(
+      (item) =>
+        (!item.soloTransversal || esTransversal) &&
+        (!item.soloAdmin || esAdmin) &&
+        (!item.roles || item.roles.includes(rol)),
+    ),
+  })).filter((seccion) => seccion.items.length > 0);
 
   return (
-    <nav aria-label="Navegación principal" className="institutional-sidebar relative flex h-full flex-col overflow-hidden border-r border-[#37F0FC]/15 bg-[#02224F] text-[#E3EAEF]">
-      <div className="relative flex min-h-[92px] items-center overflow-hidden border-b border-[#7CC7F6]/15 bg-gradient-to-br from-[#043472] via-[#0451A5] to-[#02224F] px-5">
+    <nav aria-label="Navegación principal" className="institutional-sidebar relative flex h-full flex-col overflow-hidden border-r border-[#37F0FC]/15 bg-gradient-to-b from-[#02224F] via-[#043472]/60 to-[#01142F] text-[#E3EAEF]">
+      <div className="sidebar-brand relative flex min-h-[92px] items-center overflow-hidden border-b border-[#7CC7F6]/15 bg-gradient-to-br from-[#043472]/80 via-[#0451A5]/80 to-[#02224F]/80 px-5 backdrop-blur-sm">
         <div className="absolute -right-8 -top-8 h-28 w-28 rounded-full border border-[#37F0FC]/15 bg-[#06E5FA]/[0.03]" />
         <div className="absolute -right-2 top-8 h-16 w-16 rounded-full border border-[#E99D19]/20" />
         <div className="relative"><InstitutionalMark compact /></div>
@@ -117,25 +162,42 @@ export function InstitutionalSidebar({ rol, onNavigate, onCollapse }: Props) {
         )}
       </div>
 
-      <div className="flex-1 space-y-6 overflow-y-auto bg-gradient-to-b from-[#02224F] to-[#021B40] px-3 py-5 [scrollbar-color:#0A70D6_transparent] [scrollbar-width:thin]">
-        <MenuGroup title="Navegación" items={principal} pathname={pathname} onNavigate={onNavigate} />
-        <MenuGroup title="Gestión institucional" items={gestion} pathname={pathname} onNavigate={onNavigate} />
+      <div className="sidebar-menu min-h-0 flex-1 space-y-6 overflow-y-auto bg-transparent px-3 py-5 [scrollbar-color:#0A70D6_transparent] [scrollbar-width:thin] lg:overflow-hidden">
+        {secciones.map((seccion) => (
+          <MenuGroup
+            key={seccion.title}
+            title={seccion.title}
+            items={seccion.items}
+            pathname={pathname}
+            onNavigate={onNavigate}
+          />
+        ))}
       </div>
 
-      <div className="border-t border-[#7CC7F6]/10 bg-[#021B40] p-4">
-        <div className="relative overflow-hidden rounded-2xl border border-[#7CC7F6]/15 bg-[#043472]/45 p-3.5 shadow-[0_10px_28px_rgba(2,34,79,.32)]">
-          <div className="absolute -bottom-8 -right-5 h-20 w-20 rounded-full bg-[#E99D19]/10 blur-xl" />
-          <div className="relative flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#06E5FA]/10 text-[#37F0FC] ring-1 ring-[#37F0FC]/20">
-              <InstitutionalIcon name="shield" className="h-[18px] w-[18px]" />
-            </div>
-            <div>
-              <p className="text-[11px] font-semibold text-[#E99D19]">Entorno protegido</p>
-              <p className="mt-0.5 text-[9px] uppercase tracking-[0.15em] text-[#9DA9BB]">Uso institucional</p>
-            </div>
+      <div className="sidebar-footer border-t border-[#7CC7F6]/10 bg-gradient-to-t from-[#01142F] to-transparent p-4 pb-6">
+        <div className="relative mt-6 flex justify-center">
+          {/* Luz de fondo para resaltar la imagen oscura */}
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <div className="h-28 w-44 rounded-full bg-white/10 blur-2xl" />
+            <div className="absolute h-16 w-28 rounded-full bg-[#37F0FC]/15 blur-xl" />
           </div>
+          <style>{`
+            @keyframes float-img {
+              0%, 100% { transform: translateY(0); }
+              50% { transform: translateY(-6px); }
+            }
+            .animate-float-img {
+              animation: float-img 4s ease-in-out infinite;
+            }
+          `}</style>
+          <img 
+            src="/images/marca_gobierno.png" 
+            alt="Marca Gobierno Oruro" 
+            className="animate-float-img relative z-10 h-auto w-52 object-contain opacity-100 drop-shadow-[0_4px_12px_rgba(255,255,255,0.15)] transition-all duration-300 hover:scale-110 hover:drop-shadow-[0_8px_16px_rgba(255,255,255,0.3)]" 
+          />
         </div>
-        <p className="mt-4 text-center text-[9px] uppercase tracking-[0.16em] text-[#9DA9BB]/45">Oruro avanza · v1.0</p>
+        
+        <p className="mt-6 text-center text-[9px] uppercase tracking-[0.16em] text-[#9DA9BB]/45">Oruro avanza · v1.0</p>
       </div>
     </nav>
   );
