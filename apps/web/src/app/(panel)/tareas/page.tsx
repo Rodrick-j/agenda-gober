@@ -12,7 +12,6 @@ import {
   type TareaEstado,
   type TareaPrioridad,
 } from "@/lib/api";
-import { useSession } from "@/lib/session-context";
 import { useRealtime } from "@/lib/realtime-context";
 import { InstitutionalIcon } from "@/components/InstitutionalIcon";
 import { Panel, PanelTitle } from "@/components/InstitutionalPanel";
@@ -45,7 +44,6 @@ function venceEn(fecha: string | null): { texto: string; vencida: boolean } | nu
 }
 
 export default function TareasPage() {
-  const { token } = useSession();
   const { onTareaCambio } = useRealtime();
 
   const [tareas, setTareas] = useState<Tarea[]>([]);
@@ -64,13 +62,13 @@ export default function TareasPage() {
     setCargando(true);
     setError(null);
     try {
-      setTareas(await getTareas(token));
+      setTareas(await getTareas());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error cargando las tareas");
     } finally {
       setCargando(false);
     }
-  }, [token]);
+  }, []);
 
   useEffect(() => {
     void cargar();
@@ -121,7 +119,7 @@ export default function TareasPage() {
         fechaVencimiento: fechaVencimiento ? new Date(`${fechaVencimiento}T00:00:00`).toISOString() : undefined,
         nivelConfidencialidad: nivel,
       };
-      await crearTarea(token, payload);
+      await crearTarea(payload);
       setMostrarForm(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo crear la tarea");
@@ -138,7 +136,7 @@ export default function TareasPage() {
     if (!siguiente) return;
     setError(null);
     try {
-      await actualizarTarea(token, t.id, { estado: siguiente });
+      await actualizarTarea(t.id, { estado: siguiente });
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo actualizar la tarea");
     }
@@ -147,7 +145,7 @@ export default function TareasPage() {
   async function onCancelar(t: Tarea) {
     setError(null);
     try {
-      await actualizarTarea(token, t.id, { estado: "cancelada" });
+      await actualizarTarea(t.id, { estado: "cancelada" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo cancelar la tarea");
     }
@@ -156,7 +154,7 @@ export default function TareasPage() {
   async function onEliminar(id: string) {
     setError(null);
     try {
-      await eliminarTarea(token, id);
+      await eliminarTarea(id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo eliminar la tarea");
     }

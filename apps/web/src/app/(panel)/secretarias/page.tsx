@@ -2,20 +2,18 @@
 
 import { useEffect, useState } from "react";
 import { getSecretarias, type Secretaria } from "@/lib/api";
-import { useSession } from "@/lib/session-context";
 
 export default function SecretariasPage() {
-  const { token } = useSession();
   const [secretarias, setSecretarias] = useState<Secretaria[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getSecretarias(token)
+    getSecretarias()
       .then(setSecretarias)
       .catch((err) => setError(err instanceof Error ? err.message : "Error"))
       .finally(() => setCargando(false));
-  }, [token]);
+  }, []);
 
   return (
     <div className="mx-auto max-w-7xl">

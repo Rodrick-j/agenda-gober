@@ -29,15 +29,31 @@ necesitan para decidir.
 
 ## Autenticación
 
-`POST /auth/login` con `{ email, password }` devuelve `{ accessToken }` (JWT,
-expira en 2h). El resto de rutas exige `Authorization: Bearer <token>` — lo
-verifica `JwtAuthGuard` (global) y lo procesa `JwtStrategy`, que deja
-`req.user = { userId, rol, secretariaId }` ya validado. El interceptor de
-contexto (arriba) usa esos claims directamente, sin volver a tocar la base de
-datos.
+`POST /auth/login` con `{ email, password }` valida credenciales y devuelve
+`{ user: { userId, email, rol, secretariaId } }` — el JWT en sí **no** viaja
+en el body. Va en una cookie `access_token` con `httpOnly` (JavaScript, y por
+lo tanto un XSS inyectado, no puede leerla), `sameSite: 'lax'` y `secure` en
+producción. `GET /auth/me` devuelve el mismo `user` leyendo esa cookie — el
+frontend lo usa para restaurar la sesión al recargar la página, ya que no
+tiene forma de "decodificar" un token que no puede ver. `POST /auth/logout`
+limpia la cookie.
 
-Rutas marcadas con `@Public()` (`/health`, `/auth/login`) no pasan por el
-guard ni abren transacción.
+`JwtAuthGuard` (global) + `JwtStrategy` siguen siendo quienes validan cada
+request, solo que el extractor ahora lee `req.cookies.access_token` (vía
+`cookie-parser`, montado en `main.ts`) en vez de un header `Authorization`.
+`req.user = { userId, email, rol, secretariaId }` queda igual de disponible
+para el interceptor de contexto (arriba).
+
+CORS ya no está abierto: `app.enableCors({ origin: WEB_ORIGIN, credentials:
+true })` — un origin `credentials: true` no puede ser `*` (el navegador
+rechaza mandar cookies a un wildcard), así que `WEB_ORIGIN` fija el origen
+real del frontend. El gateway de WebSocket usa el mismo criterio y lee el
+JWT de la cookie del handshake (`client.handshake.headers.cookie`), no de un
+payload de auth armado a mano — el cliente se conecta con
+`io(url, { withCredentials: true })` y la cookie viaja sola.
+
+Rutas marcadas con `@Public()` (`/health`, `/auth/login`, `/auth/logout`) no
+pasan por el guard ni abren transacción.
 
 `/auth/login` tiene rate-limiting: máximo 5 intentos por minuto por IP
 (`@Throttle` + `ThrottlerGuard`) — cierra el hallazgo de fuerza bruta del

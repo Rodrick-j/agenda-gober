@@ -8,7 +8,6 @@ import {
   subirDocumento,
   type Documento,
 } from "@/lib/api";
-import { useSession } from "@/lib/session-context";
 
 function formatoTamano(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -17,7 +16,6 @@ function formatoTamano(bytes: number): string {
 }
 
 export function DocumentosPublicacion({ publicacionId }: { publicacionId: string }) {
-  const { token } = useSession();
   const [docs, setDocs] = useState<Documento[]>([]);
   const [abierto, setAbierto] = useState(false);
   const [cargado, setCargado] = useState(false);
@@ -27,7 +25,7 @@ export function DocumentosPublicacion({ publicacionId }: { publicacionId: string
 
   async function cargar() {
     try {
-      setDocs(await getDocumentos(token, publicacionId));
+      setDocs(await getDocumentos(publicacionId));
       setCargado(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error");
@@ -45,7 +43,7 @@ export function DocumentosPublicacion({ publicacionId }: { publicacionId: string
     setSubiendo(true);
     setError(null);
     try {
-      const nuevo = await subirDocumento(token, publicacionId, file);
+      const nuevo = await subirDocumento(publicacionId, file);
       setDocs((prev) => [nuevo, ...prev]);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo subir");
@@ -58,7 +56,7 @@ export function DocumentosPublicacion({ publicacionId }: { publicacionId: string
   async function onEliminar(id: string) {
     setError(null);
     try {
-      await eliminarDocumento(token, id);
+      await eliminarDocumento(id);
       setDocs((prev) => prev.filter((d) => d.id !== id));
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo eliminar");
@@ -97,7 +95,7 @@ export function DocumentosPublicacion({ publicacionId }: { publicacionId: string
           {docs.map((d) => (
             <div key={d.id} className="flex items-center justify-between gap-2 rounded-lg bg-slate-50 px-3 py-2">
               <button
-                onClick={() => descargarDocumento(token, d)}
+                onClick={() => descargarDocumento(d)}
                 className="flex min-w-0 items-center gap-2 text-left text-xs text-slate-700 hover:text-indigo-600"
               >
                 <svg className="h-4 w-4 shrink-0 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>

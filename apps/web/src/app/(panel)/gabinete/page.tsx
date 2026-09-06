@@ -42,7 +42,7 @@ function diasVencimiento(fecha: string) {
 }
 
 export default function GabinetePage() {
-  const { token, sesion } = useSession();
+  const { sesion } = useSession();
   const esTransversal = rangoDeRol(sesion.rol) >= 99;
 
   const [resumen, setResumen] = useState<GabineteResumen | null>(null);
@@ -53,13 +53,13 @@ export default function GabinetePage() {
     setCargando(true);
     setError(null);
     try {
-      setResumen(await getGabineteResumen(token));
+      setResumen(await getGabineteResumen());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error cargando el panel de gabinete");
     } finally {
       setCargando(false);
     }
-  }, [token]);
+  }, []);
 
   useEffect(() => {
     if (esTransversal) void cargar();

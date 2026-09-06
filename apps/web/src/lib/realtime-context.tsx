@@ -24,7 +24,10 @@ const Ctx = createContext<RealtimeCtx | null>(null);
 // Una sola conexión WebSocket para todo el panel. Las páginas se suscriben a
 // publicacion:cambio / evento:cambio y reciben solo lo que la RLS del
 // backend ya autorizó para este usuario (ver pg-listener.service.ts).
-export function RealtimeProvider({ token, children }: { token: string; children: React.ReactNode }) {
+// withCredentials: la cookie httpOnly de la sesión viaja sola en el
+// handshake -- no hay token legible por JS que pasarle a mano (ver
+// realtime.gateway.ts, que la lee del header cookie del handshake).
+export function RealtimeProvider({ children }: { children: React.ReactNode }) {
   const [conectado, setConectado] = useState(false);
   const handlers = useRef(new Set<CambioHandler>());
   const eventoHandlers = useRef(new Set<EventoCambioHandler>());
@@ -33,7 +36,7 @@ export function RealtimeProvider({ token, children }: { token: string; children:
   const compromisoHandlers = useRef(new Set<CompromisoCambioHandler>());
 
   useEffect(() => {
-    const socket: Socket = io(API_URL, { auth: { token } });
+    const socket: Socket = io(API_URL, { withCredentials: true });
     socket.on("connect", () => setConectado(true));
     socket.on("disconnect", () => setConectado(false));
     socket.on("publicacion:cambio", (payload: { accion: string; publicacion?: Publicacion; id?: string }) => {
@@ -54,7 +57,7 @@ export function RealtimeProvider({ token, children }: { token: string; children:
     return () => {
       socket.disconnect();
     };
-  }, [token]);
+  }, []);
 
   const onCambio = useCallback((handler: CambioHandler) => {
     handlers.current.add(handler);

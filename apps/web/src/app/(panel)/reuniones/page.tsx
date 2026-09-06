@@ -25,7 +25,7 @@ function fechaCorta(fecha: string) {
 }
 
 export default function ReunionesPage() {
-  const { token, sesion } = useSession();
+  const { sesion } = useSession();
   const { onEventoCambio, onCompromisoCambio } = useRealtime();
 
   const [eventos, setEventos] = useState<Evento[]>([]);
@@ -52,7 +52,7 @@ export default function ReunionesPage() {
     try {
       const desde = new Date(Date.now() - 90 * 86_400_000).toISOString();
       const hasta = new Date(Date.now() + 30 * 86_400_000).toISOString();
-      const items = await getEventos(token, desde, hasta);
+      const items = await getEventos(desde, hasta);
       items.sort((a, b) => b.fecha_inicio.localeCompare(a.fecha_inicio));
       setEventos(items);
     } catch (err) {
@@ -60,7 +60,7 @@ export default function ReunionesPage() {
     } finally {
       setCargandoLista(false);
     }
-  }, [token]);
+  }, []);
 
   useEffect(() => {
     void cargarLista();
@@ -87,9 +87,9 @@ export default function ReunionesPage() {
       setError(null);
       try {
         const [ev, actaData, comps] = await Promise.all([
-          getEvento(token, eventoId),
-          getActa(token, eventoId),
-          getCompromisos(token, eventoId),
+          getEvento(eventoId),
+          getActa(eventoId),
+          getCompromisos(eventoId),
         ]);
         setDetalle(ev);
         setActa(actaData?.contenido ?? "");
@@ -101,7 +101,7 @@ export default function ReunionesPage() {
         setCargandoDetalle(false);
       }
     },
-    [token],
+    [],
   );
 
   useEffect(() => {
@@ -144,7 +144,7 @@ export default function ReunionesPage() {
     setGuardandoActa(true);
     setError(null);
     try {
-      await guardarActa(token, seleccionadoId, acta);
+      await guardarActa(seleccionadoId, acta);
       setActaOriginal(acta);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo guardar el acta");
@@ -158,7 +158,7 @@ export default function ReunionesPage() {
     if (!seleccionadoId) return;
     setError(null);
     try {
-      await crearCompromiso(token, seleccionadoId, {
+      await crearCompromiso(seleccionadoId, {
         descripcion: nuevaDescripcion,
         responsableId: nuevoResponsable || undefined,
         fechaLimite: nuevaFechaLimite ? new Date(`${nuevaFechaLimite}T00:00:00`).toISOString() : undefined,
@@ -174,7 +174,7 @@ export default function ReunionesPage() {
   async function onToggleCompromiso(c: Compromiso) {
     setError(null);
     try {
-      await actualizarCompromiso(token, c.id, { estado: c.estado === "cumplido" ? "pendiente" : "cumplido" });
+      await actualizarCompromiso(c.id, { estado: c.estado === "cumplido" ? "pendiente" : "cumplido" });
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo actualizar el compromiso");
     }
@@ -183,7 +183,7 @@ export default function ReunionesPage() {
   async function onEliminarCompromiso(id: string) {
     setError(null);
     try {
-      await eliminarCompromiso(token, id);
+      await eliminarCompromiso(id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo eliminar el compromiso");
     }

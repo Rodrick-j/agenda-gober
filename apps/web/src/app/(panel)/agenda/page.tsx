@@ -34,7 +34,7 @@ function claveDia(d: Date) {
 }
 
 export default function AgendaPage() {
-  const { token, sesion } = useSession();
+  const { sesion } = useSession();
   const { onEventoCambio } = useRealtime();
 
   const [calendar, setCalendar] = useState(() => {
@@ -62,13 +62,13 @@ export default function AgendaPage() {
     try {
       const desde = new Date(calendar.year, calendar.month, 1);
       const hasta = new Date(calendar.year, calendar.month + 1, 0, 23, 59, 59);
-      setEventos(await getEventos(token, desde.toISOString(), hasta.toISOString()));
+      setEventos(await getEventos(desde.toISOString(), hasta.toISOString()));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error cargando la agenda");
     } finally {
       setCargando(false);
     }
-  }, [token, calendar]);
+  }, [calendar]);
 
   useEffect(() => {
     void cargar();
@@ -156,8 +156,8 @@ export default function AgendaPage() {
         nivelConfidencialidad: nivel,
       };
 
-      if (editando) await actualizarEvento(token, editando.id, payload);
-      else await crearEvento(token, payload);
+      if (editando) await actualizarEvento(editando.id, payload);
+      else await crearEvento(payload);
       setMostrarForm(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo guardar el evento");
@@ -169,7 +169,7 @@ export default function AgendaPage() {
   async function onEliminar(id: string) {
     setError(null);
     try {
-      await eliminarEvento(token, id);
+      await eliminarEvento(id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo eliminar el evento");
     }

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { cerrarSesion, decodificarSesion, obtenerToken, type SesionUsuario } from "@/lib/auth";
+import { getMe, logout as logoutRequest, type SesionUsuario } from "@/lib/api";
 import { SessionProvider } from "@/lib/session-context";
 import { RealtimeProvider, useRealtime } from "@/lib/realtime-context";
 import { InstitutionalSidebar as Sidebar } from "@/components/InstitutionalSidebar";
@@ -70,33 +70,40 @@ function Topbar({ sesion, onMenu, onLogout }: { sesion: SesionUsuario; onMenu: (
 
 export default function PanelLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const [token, setToken] = useState<string | null>(null);
   const [sesion, setSesion] = useState<SesionUsuario | null>(null);
+  const [verificando, setVerificando] = useState(true);
   const [drawerAbierto, setDrawerAbierto] = useState(false);
 
+  // No hay token que decodificar en el cliente (vive en una cookie httpOnly)
+  // -- se le pregunta al backend quién sos según esa cookie. Si no hay
+  // sesión válida, /auth/me responde 401 y se manda a login.
   useEffect(() => {
-    const t = obtenerToken();
-    const s = t ? decodificarSesion(t) : null;
-    if (!t || !s) {
-      router.replace("/login");
-      return;
-    }
-    queueMicrotask(() => {
-      setToken(t);
-      setSesion(s);
-    });
+    let cancelado = false;
+    getMe()
+      .then(({ user }) => {
+        if (!cancelado) setSesion(user);
+      })
+      .catch(() => {
+        if (!cancelado) router.replace("/login");
+      })
+      .finally(() => {
+        if (!cancelado) setVerificando(false);
+      });
+    return () => {
+      cancelado = true;
+    };
   }, [router]);
 
-  function logout() {
-    cerrarSesion();
+  async function logout() {
+    await logoutRequest().catch(() => undefined);
     router.replace("/login");
   }
 
-  if (!token || !sesion) return null;
+  if (verificando || !sesion) return null;
 
   return (
-    <SessionProvider value={{ token, sesion, logout }}>
-      <RealtimeProvider token={token}>
+    <SessionProvider value={{ sesion, logout }}>
+      <RealtimeProvider>
         <div className="flex min-h-screen bg-[#f4f7fb]">
           {/* Sidebar fijo en desktop */}
           <aside className="hidden w-[248px] shrink-0 lg:block">

@@ -34,7 +34,7 @@ function formatoMoneda(valor: string | null) {
 }
 
 export default function ProyectosPage() {
-  const { token, sesion } = useSession();
+  const { sesion } = useSession();
   const { onProyectoCambio } = useRealtime();
 
   const [proyectos, setProyectos] = useState<Proyecto[]>([]);
@@ -55,13 +55,13 @@ export default function ProyectosPage() {
     setCargando(true);
     setError(null);
     try {
-      setProyectos(await getProyectos(token));
+      setProyectos(await getProyectos());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error cargando los proyectos");
     } finally {
       setCargando(false);
     }
-  }, [token]);
+  }, []);
 
   useEffect(() => {
     void cargar();
@@ -116,7 +116,7 @@ export default function ProyectosPage() {
         fechaFinEstimada: fechaFinEstimada || undefined,
         nivelConfidencialidad: nivel,
       };
-      await crearProyecto(token, payload);
+      await crearProyecto(payload);
       setMostrarForm(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo crear el proyecto");
@@ -128,7 +128,7 @@ export default function ProyectosPage() {
   async function onCambiarEstado(p: Proyecto, estado: ProyectoEstado) {
     setError(null);
     try {
-      await actualizarProyecto(token, p.id, { estado });
+      await actualizarProyecto(p.id, { estado });
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo actualizar el estado");
     }
@@ -137,7 +137,7 @@ export default function ProyectosPage() {
   async function onCambiarAvance(p: Proyecto, avancePorcentaje: number) {
     setError(null);
     try {
-      await actualizarProyecto(token, p.id, { avancePorcentaje });
+      await actualizarProyecto(p.id, { avancePorcentaje });
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo actualizar el avance");
     }
@@ -146,7 +146,7 @@ export default function ProyectosPage() {
   async function onEliminar(id: string) {
     setError(null);
     try {
-      await eliminarProyecto(token, id);
+      await eliminarProyecto(id);
     } catch (err) {
       setError(err instanceof Error ? err.message : "No se pudo eliminar el proyecto");
     }

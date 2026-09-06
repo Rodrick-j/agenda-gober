@@ -22,12 +22,15 @@ export class ApiError extends Error {
   }
 }
 
-async function request<T>(path: string, options: RequestInit = {}, token?: string | null): Promise<T> {
+// credentials: "include" en cada request: la sesión vive en una cookie
+// httpOnly (access_token) que el navegador adjunta solo -- nunca hay un
+// token legible por JavaScript que pasar a mano acá.
+async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...options.headers,
     },
   });
@@ -41,30 +44,40 @@ async function request<T>(path: string, options: RequestInit = {}, token?: strin
   return res.json();
 }
 
+export interface SesionUsuario {
+  userId: string;
+  email: string;
+  rol: string;
+  secretariaId: string | null;
+}
+
 export function login(email: string, password: string) {
-  return request<{ accessToken: string }>("/auth/login", {
+  return request<{ user: SesionUsuario }>("/auth/login", {
     method: "POST",
     body: JSON.stringify({ email, password }),
   });
 }
 
-export function getPublicaciones(token: string) {
-  return request<Publicacion[]>("/publicaciones", {}, token);
+export function logout() {
+  return request<{ ok: boolean }>("/auth/logout", { method: "POST" });
 }
 
-export function crearPublicacion(
-  token: string,
-  data: { titulo: string; contenido: string; nivelConfidencialidad: NivelConfidencialidad },
-) {
-  return request<Publicacion>("/publicaciones", { method: "POST", body: JSON.stringify(data) }, token);
+// Para restaurar la sesión al recargar: no hay token que decodificar en el
+// cliente, así que se le pregunta al backend quién sos según la cookie.
+export function getMe() {
+  return request<{ user: SesionUsuario }>("/auth/me");
 }
 
-export function actualizarEstado(token: string, id: string, estado: EstadoPublicacion) {
-  return request<Publicacion>(
-    `/publicaciones/${id}/estado`,
-    { method: "PATCH", body: JSON.stringify({ estado }) },
-    token,
-  );
+export function getPublicaciones() {
+  return request<Publicacion[]>("/publicaciones");
+}
+
+export function crearPublicacion(data: { titulo: string; contenido: string; nivelConfidencialidad: NivelConfidencialidad }) {
+  return request<Publicacion>("/publicaciones", { method: "POST", body: JSON.stringify(data) });
+}
+
+export function actualizarEstado(id: string, estado: EstadoPublicacion) {
+  return request<Publicacion>(`/publicaciones/${id}/estado`, { method: "PATCH", body: JSON.stringify({ estado }) });
 }
 
 export interface Secretaria {
@@ -75,8 +88,8 @@ export interface Secretaria {
   publicaciones_visibles: number;
 }
 
-export function getSecretarias(token: string) {
-  return request<Secretaria[]>("/secretarias", {}, token);
+export function getSecretarias() {
+  return request<Secretaria[]>("/secretarias");
 }
 
 export interface RegistroAuditoria {
@@ -90,8 +103,8 @@ export interface RegistroAuditoria {
   usuario_email: string | null;
 }
 
-export function getAuditoria(token: string) {
-  return request<RegistroAuditoria[]>("/auditoria", {}, token);
+export function getAuditoria() {
+  return request<RegistroAuditoria[]>("/auditoria");
 }
 
 export interface Documento {
@@ -103,18 +116,18 @@ export interface Documento {
   created_at: string;
 }
 
-export function getDocumentos(token: string, publicacionId: string) {
-  return request<Documento[]>(`/publicaciones/${publicacionId}/documentos`, {}, token);
+export function getDocumentos(publicacionId: string) {
+  return request<Documento[]>(`/publicaciones/${publicacionId}/documentos`);
 }
 
 // Subida multipart: no se pasa Content-Type a mano (el navegador arma el
 // boundary de FormData por sí solo).
-export async function subirDocumento(token: string, publicacionId: string, archivo: File) {
+export async function subirDocumento(publicacionId: string, archivo: File) {
   const form = new FormData();
   form.append("archivo", archivo);
   const res = await fetch(`${API_URL}/publicaciones/${publicacionId}/documentos`, {
     method: "POST",
-    headers: { Authorization: `Bearer ${token}` },
+    credentials: "include",
     body: form,
   });
   if (!res.ok) {
@@ -125,12 +138,10 @@ export async function subirDocumento(token: string, publicacionId: string, archi
   return res.json() as Promise<Documento>;
 }
 
-// Descarga autenticada: se baja como blob y se fuerza el guardado, porque el
-// endpoint requiere el header Authorization (no se puede usar un <a href>).
-export async function descargarDocumento(token: string, doc: Documento) {
-  const res = await fetch(`${API_URL}/documentos/${doc.id}/descargar`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
+// Descarga autenticada: se baja como blob y se fuerza el guardado (la cookie
+// va sola con credentials: "include", igual que en cualquier otro request).
+export async function descargarDocumento(doc: Documento) {
+  const res = await fetch(`${API_URL}/documentos/${doc.id}/descargar`, { credentials: "include" });
   if (!res.ok) throw new ApiError("No se pudo descargar", res.status);
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
@@ -143,8 +154,8 @@ export async function descargarDocumento(token: string, doc: Documento) {
   URL.revokeObjectURL(url);
 }
 
-export function eliminarDocumento(token: string, id: string) {
-  return request<{ eliminado: boolean }>(`/documentos/${id}`, { method: "DELETE" }, token);
+export function eliminarDocumento(id: string) {
+  return request<{ eliminado: boolean }>(`/documentos/${id}`, { method: "DELETE" });
 }
 
 export interface Evento {
@@ -181,28 +192,28 @@ export interface EventoDetalle extends Evento {
   creador: Participante | null;
 }
 
-export function getEvento(token: string, id: string) {
-  return request<EventoDetalle>(`/eventos/${id}`, {}, token);
+export function getEvento(id: string) {
+  return request<EventoDetalle>(`/eventos/${id}`);
 }
 
-export function getEventos(token: string, desde?: string, hasta?: string) {
+export function getEventos(desde?: string, hasta?: string) {
   const params = new URLSearchParams();
   if (desde) params.set("desde", desde);
   if (hasta) params.set("hasta", hasta);
   const qs = params.toString();
-  return request<Evento[]>(`/eventos${qs ? `?${qs}` : ""}`, {}, token);
+  return request<Evento[]>(`/eventos${qs ? `?${qs}` : ""}`);
 }
 
-export function crearEvento(token: string, data: CrearEventoInput) {
-  return request<Evento>("/eventos", { method: "POST", body: JSON.stringify(data) }, token);
+export function crearEvento(data: CrearEventoInput) {
+  return request<Evento>("/eventos", { method: "POST", body: JSON.stringify(data) });
 }
 
-export function actualizarEvento(token: string, id: string, data: Partial<CrearEventoInput>) {
-  return request<Evento>(`/eventos/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token);
+export function actualizarEvento(id: string, data: Partial<CrearEventoInput>) {
+  return request<Evento>(`/eventos/${id}`, { method: "PATCH", body: JSON.stringify(data) });
 }
 
-export function eliminarEvento(token: string, id: string) {
-  return request<{ eliminado: boolean }>(`/eventos/${id}`, { method: "DELETE" }, token);
+export function eliminarEvento(id: string) {
+  return request<{ eliminado: boolean }>(`/eventos/${id}`, { method: "DELETE" });
 }
 
 export type TareaEstado = "pendiente" | "en_progreso" | "completada" | "cancelada";
@@ -230,24 +241,20 @@ export interface CrearTareaInput {
   nivelConfidencialidad: NivelConfidencialidad;
 }
 
-export function getTareas(token: string) {
-  return request<Tarea[]>("/tareas", {}, token);
+export function getTareas() {
+  return request<Tarea[]>("/tareas");
 }
 
-export function crearTarea(token: string, data: CrearTareaInput) {
-  return request<Tarea>("/tareas", { method: "POST", body: JSON.stringify(data) }, token);
+export function crearTarea(data: CrearTareaInput) {
+  return request<Tarea>("/tareas", { method: "POST", body: JSON.stringify(data) });
 }
 
-export function actualizarTarea(
-  token: string,
-  id: string,
-  data: Partial<CrearTareaInput> & { estado?: TareaEstado },
-) {
-  return request<Tarea>(`/tareas/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token);
+export function actualizarTarea(id: string, data: Partial<CrearTareaInput> & { estado?: TareaEstado }) {
+  return request<Tarea>(`/tareas/${id}`, { method: "PATCH", body: JSON.stringify(data) });
 }
 
-export function eliminarTarea(token: string, id: string) {
-  return request<{ eliminado: boolean }>(`/tareas/${id}`, { method: "DELETE" }, token);
+export function eliminarTarea(id: string) {
+  return request<{ eliminado: boolean }>(`/tareas/${id}`, { method: "DELETE" });
 }
 
 export interface GabineteSecretariaResumen {
@@ -290,8 +297,8 @@ export interface GabineteResumen {
   };
 }
 
-export function getGabineteResumen(token: string) {
-  return request<GabineteResumen>("/gabinete/resumen", {}, token);
+export function getGabineteResumen() {
+  return request<GabineteResumen>("/gabinete/resumen");
 }
 
 export type ProyectoEstado = "planificacion" | "en_ejecucion" | "pausado" | "finalizado" | "cancelado";
@@ -326,20 +333,20 @@ export interface ActualizarProyectoInput extends Partial<CrearProyectoInput> {
   avancePorcentaje?: number;
 }
 
-export function getProyectos(token: string) {
-  return request<Proyecto[]>("/proyectos", {}, token);
+export function getProyectos() {
+  return request<Proyecto[]>("/proyectos");
 }
 
-export function crearProyecto(token: string, data: CrearProyectoInput) {
-  return request<Proyecto>("/proyectos", { method: "POST", body: JSON.stringify(data) }, token);
+export function crearProyecto(data: CrearProyectoInput) {
+  return request<Proyecto>("/proyectos", { method: "POST", body: JSON.stringify(data) });
 }
 
-export function actualizarProyecto(token: string, id: string, data: ActualizarProyectoInput) {
-  return request<Proyecto>(`/proyectos/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token);
+export function actualizarProyecto(id: string, data: ActualizarProyectoInput) {
+  return request<Proyecto>(`/proyectos/${id}`, { method: "PATCH", body: JSON.stringify(data) });
 }
 
-export function eliminarProyecto(token: string, id: string) {
-  return request<{ eliminado: boolean }>(`/proyectos/${id}`, { method: "DELETE" }, token);
+export function eliminarProyecto(id: string) {
+  return request<{ eliminado: boolean }>(`/proyectos/${id}`, { method: "DELETE" });
 }
 
 export interface IndicadoresResumen {
@@ -356,8 +363,8 @@ export interface IndicadoresResumen {
   };
 }
 
-export function getIndicadoresResumen(token: string) {
-  return request<IndicadoresResumen>("/indicadores/resumen", {}, token);
+export function getIndicadoresResumen() {
+  return request<IndicadoresResumen>("/indicadores/resumen");
 }
 
 export interface ReunionActa {
@@ -382,34 +389,29 @@ export interface Compromiso {
   updated_at: string;
 }
 
-export function getActa(token: string, eventoId: string) {
-  return request<ReunionActa | null>(`/eventos/${eventoId}/acta`, {}, token);
+export function getActa(eventoId: string) {
+  return request<ReunionActa | null>(`/eventos/${eventoId}/acta`);
 }
 
-export function guardarActa(token: string, eventoId: string, contenido: string) {
-  return request<ReunionActa>(`/eventos/${eventoId}/acta`, { method: "PUT", body: JSON.stringify({ contenido }) }, token);
+export function guardarActa(eventoId: string, contenido: string) {
+  return request<ReunionActa>(`/eventos/${eventoId}/acta`, { method: "PUT", body: JSON.stringify({ contenido }) });
 }
 
-export function getCompromisos(token: string, eventoId: string) {
-  return request<Compromiso[]>(`/eventos/${eventoId}/compromisos`, {}, token);
+export function getCompromisos(eventoId: string) {
+  return request<Compromiso[]>(`/eventos/${eventoId}/compromisos`);
 }
 
-export function crearCompromiso(
-  token: string,
-  eventoId: string,
-  data: { descripcion: string; responsableId?: string; fechaLimite?: string },
-) {
-  return request<Compromiso>(`/eventos/${eventoId}/compromisos`, { method: "POST", body: JSON.stringify(data) }, token);
+export function crearCompromiso(eventoId: string, data: { descripcion: string; responsableId?: string; fechaLimite?: string }) {
+  return request<Compromiso>(`/eventos/${eventoId}/compromisos`, { method: "POST", body: JSON.stringify(data) });
 }
 
 export function actualizarCompromiso(
-  token: string,
   id: string,
   data: Partial<{ descripcion: string; responsableId: string; fechaLimite: string; estado: CompromisoEstado }>,
 ) {
-  return request<Compromiso>(`/compromisos/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token);
+  return request<Compromiso>(`/compromisos/${id}`, { method: "PATCH", body: JSON.stringify(data) });
 }
 
-export function eliminarCompromiso(token: string, id: string) {
-  return request<{ eliminado: boolean }>(`/compromisos/${id}`, { method: "DELETE" }, token);
+export function eliminarCompromiso(id: string) {
+  return request<{ eliminado: boolean }>(`/compromisos/${id}`, { method: "DELETE" });
 }

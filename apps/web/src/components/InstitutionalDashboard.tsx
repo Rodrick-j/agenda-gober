@@ -13,7 +13,7 @@ import {
   type Publicacion,
   type Secretaria,
 } from "@/lib/api";
-import { cerrarSesion } from "@/lib/auth";
+import { logout as logoutRequest } from "@/lib/api";
 import { useSession } from "@/lib/session-context";
 import { useRealtime } from "@/lib/realtime-context";
 import { PublicacionCard } from "@/components/PublicacionCard";
@@ -112,7 +112,7 @@ function relativeTime(value: string, now: Date | null) {
 
 export function InstitutionalDashboard() {
   const router = useRouter();
-  const { token, sesion } = useSession();
+  const { sesion } = useSession();
   const { onCambio, conectado } = useRealtime();
   const [publicaciones, setPublicaciones] = useState<Publicacion[]>([]);
   const [secretarias, setSecretarias] = useState<Secretaria[]>([]);
@@ -142,14 +142,14 @@ export function InstitutionalDashboard() {
     setError(null);
     try {
       const [items, offices] = await Promise.all([
-        getPublicaciones(token),
-        getSecretarias(token).catch(() => [] as Secretaria[]),
+        getPublicaciones(),
+        getSecretarias().catch(() => [] as Secretaria[]),
       ]);
       setPublicaciones(items);
       setSecretarias(offices);
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
-        cerrarSesion();
+        await logoutRequest().catch(() => undefined);
         router.replace("/login");
         return;
       }
@@ -157,7 +157,7 @@ export function InstitutionalDashboard() {
     } finally {
       setCargando(false);
     }
-  }, [token, router]);
+  }, [router]);
 
   useEffect(() => {
     queueMicrotask(() => void cargar());
@@ -224,7 +224,7 @@ export function InstitutionalDashboard() {
     setCreando(true);
     setError(null);
     try {
-      const nueva = await crearPublicacion(token, { titulo, contenido, nivelConfidencialidad: nivel });
+      const nueva = await crearPublicacion({ titulo, contenido, nivelConfidencialidad: nivel });
       setPublicaciones((previous) => previous.some((item) => item.id === nueva.id) ? previous : [nueva, ...previous]);
       setTitulo("");
       setContenido("");
@@ -239,7 +239,7 @@ export function InstitutionalDashboard() {
   async function onTransicion(id: string, estado: EstadoPublicacion) {
     setError(null);
     try {
-      const updated = await actualizarEstado(token, id, estado);
+      const updated = await actualizarEstado(id, estado);
       setPublicaciones((previous) => previous.map((item) => item.id === id ? updated : item));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Transición no permitida");
@@ -252,13 +252,13 @@ export function InstitutionalDashboard() {
     <div className="mx-auto max-w-[1600px]">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <div className="mb-1.5 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#0d5fc1]">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#0d5fc1]" /> Centro de gestión institucional
+          <div className="mb-1.5 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#9c0720]">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#9c0720]" /> Centro de gestión institucional
           </div>
-          <h1 className="text-xl font-black tracking-tight text-[#102a4c] sm:text-2xl">Panel de coordinación</h1>
+          <h1 className="text-xl font-black tracking-tight text-[#4a4848] sm:text-2xl">Panel de coordinación</h1>
           <p className="mt-1 text-xs capitalize text-slate-500">{longDate ?? "Cargando fecha institucional…"}</p>
         </div>
-        <button onClick={() => setMostrarForm((visible) => !visible)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#890b32] to-[#6d0828] px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-rose-900/15 transition hover:-translate-y-0.5 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-rose-700/30">
+        <button onClick={() => setMostrarForm((visible) => !visible)} className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#67181a] to-[#9c0720] px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-rose-900/15 transition hover:-translate-y-0.5 hover:shadow-xl focus:outline-none focus:ring-2 focus:ring-rose-700/30">
           <InstitutionalIcon name={mostrarForm ? "chevronDown" : "plus"} className="h-4 w-4" />
           {mostrarForm ? "Cerrar formulario" : "Nueva publicación"}
         </button>
@@ -274,31 +274,31 @@ export function InstitutionalDashboard() {
       </div>
 
       {mostrarForm && (
-        <form onSubmit={onCrear} className="mb-4 overflow-hidden rounded-2xl border border-rose-100 bg-white shadow-[0_12px_40px_rgba(94,10,42,.08)]">
+        <form onSubmit={onCrear} className="mb-4 overflow-hidden rounded-2xl border border-rose-100 bg-white shadow-[0_12px_40px_rgba(103,24,26,.08)]">
           <div className="flex items-center justify-between border-b border-rose-100 bg-gradient-to-r from-rose-50 to-white px-5 py-3.5">
             <div>
-              <h2 className="text-sm font-extrabold text-[#6f0b2b]">Crear publicación institucional</h2>
+              <h2 className="text-sm font-extrabold text-[#67181a]">Crear publicación institucional</h2>
               <p className="mt-0.5 text-[10px] text-slate-500">Completa la información para iniciar el flujo de aprobación.</p>
             </div>
-            <InstitutionalIcon name="sparkles" className="h-5 w-5 text-amber-500" />
+            <InstitutionalIcon name="sparkles" className="h-5 w-5 text-[#ffb843]" />
           </div>
           <div className="grid gap-4 p-5 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_220px]">
             <label className="block text-xs font-bold text-slate-700">
               Título
-              <input value={titulo} onChange={(event) => setTitulo(event.target.value)} required placeholder="Ej. Avance de obra departamental" className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-normal outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:ring-3 focus:ring-blue-100" />
+              <input value={titulo} onChange={(event) => setTitulo(event.target.value)} required placeholder="Ej. Avance de obra departamental" className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-normal outline-none transition placeholder:text-slate-400 focus:border-[#9c0720] focus:bg-white focus:ring-3 focus:ring-rose-100" />
             </label>
             <label className="block text-xs font-bold text-slate-700">
               Confidencialidad
-              <select value={nivel} onChange={(event) => setNivel(event.target.value as NivelConfidencialidad)} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-normal outline-none transition focus:border-blue-400 focus:bg-white focus:ring-3 focus:ring-blue-100">
+              <select value={nivel} onChange={(event) => setNivel(event.target.value as NivelConfidencialidad)} className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-normal outline-none transition focus:border-[#9c0720] focus:bg-white focus:ring-3 focus:ring-rose-100">
                 <option value="publica">Pública</option><option value="interna">Interna</option><option value="reservada">Reservada</option><option value="confidencial">Confidencial</option>
               </select>
             </label>
-            <button type="submit" disabled={creando} className="self-end rounded-xl bg-[#0d5fc1] px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-200 transition hover:bg-[#094f9f] disabled:cursor-wait disabled:opacity-60 sm:col-span-2 lg:col-span-1">
+            <button type="submit" disabled={creando} className="self-end rounded-xl bg-[#67181a] px-5 py-2.5 text-sm font-bold text-white shadow-md shadow-rose-200 transition hover:bg-[#9c0720] disabled:cursor-wait disabled:opacity-60 sm:col-span-2 lg:col-span-1">
               {creando ? "Guardando…" : "Crear borrador"}
             </button>
             <label className="block text-xs font-bold text-slate-700 sm:col-span-2 lg:col-span-3">
               Contenido
-              <textarea value={contenido} onChange={(event) => setContenido(event.target.value)} required rows={3} placeholder="Describe el contenido institucional…" className="mt-1.5 w-full resize-y rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-normal leading-relaxed outline-none transition placeholder:text-slate-400 focus:border-blue-400 focus:bg-white focus:ring-3 focus:ring-blue-100" />
+              <textarea value={contenido} onChange={(event) => setContenido(event.target.value)} required rows={3} placeholder="Describe el contenido institucional…" className="mt-1.5 w-full resize-y rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-normal leading-relaxed outline-none transition placeholder:text-slate-400 focus:border-[#9c0720] focus:bg-white focus:ring-3 focus:ring-rose-100" />
             </label>
           </div>
         </form>
@@ -381,11 +381,11 @@ export function InstitutionalDashboard() {
 
       <section id="publicaciones" className="scroll-mt-28">
         <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-          <div><h2 className="text-lg font-black tracking-tight text-[#102a4c]">Gestión de publicaciones</h2><p className="mt-1 text-xs text-slate-500">Contenido visible para tu rol · <span className="font-bold capitalize text-[#0d5fc1]">{sesion.rol}</span></p></div>
+          <div><h2 className="text-lg font-black tracking-tight text-[#4a4848]">Gestión de publicaciones</h2><p className="mt-1 text-xs text-slate-500">Contenido visible para tu rol · <span className="font-bold capitalize text-[#9c0720]">{sesion.rol}</span></p></div>
           <div className="flex flex-col gap-2 sm:flex-row">
-            <label className="relative block sm:w-64"><span className="sr-only">Buscar publicaciones</span><InstitutionalIcon name="search" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={busqueda} onChange={(event) => setBusqueda(event.target.value)} placeholder="Buscar contenido…" className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-xs outline-none transition focus:border-blue-400 focus:ring-3 focus:ring-blue-100" /></label>
+            <label className="relative block sm:w-64"><span className="sr-only">Buscar publicaciones</span><InstitutionalIcon name="search" className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input value={busqueda} onChange={(event) => setBusqueda(event.target.value)} placeholder="Buscar contenido…" className="w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-9 pr-3 text-xs outline-none transition focus:border-[#9c0720] focus:ring-3 focus:ring-rose-100" /></label>
             <div className="flex max-w-full gap-1 overflow-x-auto rounded-xl border border-slate-200 bg-white p-1 [scrollbar-width:none]">
-              {ESTADOS.map((estado) => <button key={estado} onClick={() => setFiltroEstado(estado)} className={`shrink-0 rounded-lg px-3 py-1.5 text-[10px] font-bold capitalize transition ${filtroEstado === estado ? "bg-[#102a4c] text-white shadow-sm" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"}`}>{estado === "revision" ? "revisión" : estado}</button>)}
+              {ESTADOS.map((estado) => <button key={estado} onClick={() => setFiltroEstado(estado)} className={`shrink-0 rounded-lg px-3 py-1.5 text-[10px] font-bold capitalize transition ${filtroEstado === estado ? "bg-[#67181a] text-white shadow-sm" : "text-slate-500 hover:bg-slate-50 hover:text-slate-800"}`}>{estado === "revision" ? "revisión" : estado}</button>)}
             </div>
           </div>
         </div>

@@ -76,7 +76,7 @@ function DistribucionPanel({ icon, titulo, datos }: { icon: IconName; titulo: st
 }
 
 export default function IndicadoresPage() {
-  const { token, sesion } = useSession();
+  const { sesion } = useSession();
   const [resumen, setResumen] = useState<IndicadoresResumen | null>(null);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -85,13 +85,13 @@ export default function IndicadoresPage() {
     setCargando(true);
     setError(null);
     try {
-      setResumen(await getIndicadoresResumen(token));
+      setResumen(await getIndicadoresResumen());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error cargando los indicadores");
     } finally {
       setCargando(false);
     }
-  }, [token]);
+  }, []);
 
   useEffect(() => {
     void cargar();

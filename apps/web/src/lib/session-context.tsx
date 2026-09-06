@@ -1,10 +1,9 @@
 "use client";
 
 import { createContext, useContext } from "react";
-import type { SesionUsuario } from "@/lib/auth";
+import type { SesionUsuario } from "@/lib/api";
 
 interface SessionCtx {
-  token: string;
   sesion: SesionUsuario;
   logout: () => void;
 }

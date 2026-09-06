@@ -2,12 +2,14 @@ import { Injectable, Logger } from '@nestjs/common';
 import { OnGatewayConnection, OnGatewayDisconnect, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
 import { JwtService } from '@nestjs/jwt';
 import { Server, Socket } from 'socket.io';
+import { parse as parseCookies } from 'cookie';
 import type { AuthenticatedUser, JwtPayload } from '../auth/jwt-payload';
 
-// CORS abierto porque todavia no hay frontend con un origen fijo -- acotar
-// esto al dominio real antes de exponer el backend fuera de tu maquina.
+// credentials: true + origen explícito (nunca '*' -- el navegador rechaza
+// mandar cookies a un wildcard) porque el JWT ahora viaja en la cookie
+// httpOnly del handshake, no en un payload de auth armado a mano por JS.
 @Injectable()
-@WebSocketGateway({ cors: { origin: '*' } })
+@WebSocketGateway({ cors: { origin: process.env.WEB_ORIGIN ?? 'http://localhost:3002', credentials: true } })
 export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(RealtimeGateway.name);
 
@@ -16,11 +18,14 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
 
   constructor(private readonly jwt: JwtService) {}
 
-  // No hay handshake HTTP acá (los guards globales no aplican a WebSockets),
-  // así que el JWT se verifica a mano con el mismo secreto/servicio que usa
-  // el login. Sin token válido, se corta la conexión de una.
+  // No hay handshake HTTP con Guards acá (los guards globales no aplican a
+  // WebSockets), así que el JWT se verifica a mano con el mismo secreto/
+  // servicio que usa el login -- pero ahora se lee de la cookie que el
+  // navegador ya adjuntó solo, igual que en cualquier request HTTP normal
+  // (el cliente se conecta con `withCredentials: true`, sin tocar el token).
   async handleConnection(client: Socket) {
-    const token = client.handshake.auth?.token as string | undefined;
+    const rawCookies = client.handshake.headers.cookie;
+    const token = rawCookies ? parseCookies(rawCookies).access_token : undefined;
     if (!token) {
       client.disconnect(true);
       return;
@@ -29,6 +34,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
       const payload = await this.jwt.verifyAsync<JwtPayload>(token);
       const user: AuthenticatedUser = {
         userId: payload.sub,
+        email: payload.email,
         rol: payload.rol,
         secretariaId: payload.secretariaId,
       };

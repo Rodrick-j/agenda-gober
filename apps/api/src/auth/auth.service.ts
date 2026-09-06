@@ -16,7 +16,7 @@ export class AuthService {
     private readonly jwt: JwtService,
   ) {}
 
-  async login(dto: LoginDto): Promise<{ accessToken: string }> {
+  async login(dto: LoginDto) {
     // Si un usuario tuviera varios roles, toma uno solo (MVP) — soporte
     // multi-rol real queda para cuando haga falta.
     const { rows } = await this.pool.query(
@@ -51,6 +51,9 @@ export class AuthService {
       secretariaId: user.secretaria_id,
     });
 
-    return { accessToken };
+    return {
+      accessToken,
+      user: { userId: user.id, email: user.email, rol: user.rol, secretariaId: user.secretaria_id },
+    };
   }
 }

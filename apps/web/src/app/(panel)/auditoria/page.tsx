@@ -33,7 +33,7 @@ function resumenCambio(r: RegistroAuditoria): string {
 }
 
 export default function AuditoriaPage() {
-  const { token, sesion } = useSession();
+  const { sesion } = useSession();
   const [registros, setRegistros] = useState<RegistroAuditoria[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -45,11 +45,11 @@ export default function AuditoriaPage() {
       setCargando(false);
       return;
     }
-    getAuditoria(token)
+    getAuditoria()
       .then(setRegistros)
       .catch((err) => setError(err instanceof Error ? err.message : "Error"))
       .finally(() => setCargando(false));
-  }, [token, esTransversal]);
+  }, [esTransversal]);
 
   if (!esTransversal) {
     return (
