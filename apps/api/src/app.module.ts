@@ -13,6 +13,7 @@ import { TareasModule } from './tareas/tareas.module';
 import { GabineteModule } from './gabinete/gabinete.module';
 import { ProyectosModule } from './proyectos/proyectos.module';
 import { IndicadoresModule } from './indicadores/indicadores.module';
+import { ReunionesModule } from './reuniones/reuniones.module';
 import { AuthModule } from './auth/auth.module';
 import { JwtAuthGuard } from './auth/jwt-auth.guard';
 import { RealtimeModule } from './realtime/realtime.module';
@@ -33,6 +34,7 @@ import { HealthController } from './health.controller';
     GabineteModule,
     ProyectosModule,
     IndicadoresModule,
+    ReunionesModule,
     RealtimeModule,
   ],
   controllers: [HealthController],

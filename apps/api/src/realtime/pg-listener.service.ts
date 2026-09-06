@@ -52,6 +52,14 @@ const CANALES: Record<string, CanalConfig> = {
                    fecha_inicio, fecha_fin_estimada, nivel_confidencialidad, creado_por, created_at, updated_at
             FROM proyectos WHERE id = $1`,
   },
+  compromisos_cambios: {
+    socketEvent: 'compromiso:cambio',
+    payloadKey: 'compromiso',
+    query: `SELECT c.id, c.evento_id, c.descripcion, c.responsable_id, c.fecha_limite, c.estado,
+                   c.created_at, c.updated_at, u.nombre AS responsable_nombre
+            FROM compromisos c LEFT JOIN usuarios u ON u.id = c.responsable_id
+            WHERE c.id = $1`,
+  },
 };
 
 // LISTEN necesita una conexión propia y de larga duración -- no se puede

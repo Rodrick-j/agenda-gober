@@ -202,6 +202,50 @@ fila puntual que el patrón `CANALES` de `pg-listener.service.ts` pueda
 re-consultar por id. Se actualiza con el botón "Actualizar" o al volver a
 entrar a la página.
 
+## Reuniones (actas y compromisos)
+
+`db/migrations/011_reuniones.sql`. No hay tabla "reuniones": una reunión ES
+un `eventos_agenda` (008). Esto agrega su *resultado* — el acta (minuta) y
+los compromisos (acuerdos con responsable y fecha) que salen de ella.
+
+- `GET /eventos/:id/acta`, `PUT /eventos/:id/acta` (upsert, se sobreescribe)
+- `GET /eventos/:id/compromisos`, `POST /eventos/:id/compromisos`
+- `PATCH /compromisos/:id`, `DELETE /compromisos/:id`
+
+Visibilidad completa (`fn_evento_visible_completo`, SECURITY DEFINER nueva —
+**no** reutiliza `fn_evento_visible_para_actual` de 008 porque esa a
+propósito no incluye la vía de invitado, y acá cualquier invitado sí debe
+poder leer el acta): transversal, secretaría + rango vs. confidencialidad, o
+invitado al evento. Editar (acta, crear/borrar compromisos) exige rango
+`director`+ del evento (`fn_evento_editable_por_actual`).
+
+**Mismo mecanismo que Tareas para compromisos:** el responsable de un
+compromiso puede entrar a `UPDATE` aunque no tenga rango de director ni sea
+de la secretaría dueña (para marcar su propio compromiso como cumplido), y
+un trigger (`fn_validar_edicion_compromiso`, calcado de
+`fn_validar_edicion_tarea`) le bloquea tocar cualquier otra columna.
+Verificado con curl: el responsable puede pasar su compromiso a `cumplido`
+(200), pero si en el mismo `PATCH` intenta cambiar la `descripcion` la
+operación entera se rechaza con 403.
+
+**Selector de responsable sin endpoint de "listar usuarios":** `GET
+/eventos/:id` ahora también devuelve `creador` (antes solo devolvía
+`responsables`) — el frontend arma el selector con ese universo pequeño y ya
+visible (creador + invitados), en vez de necesitar un directorio completo de
+usuarios.
+
+**Bug real que encontré armando esto:** el trigger de auditoría genérico
+(`fn_auditoria_publicaciones`, 001) usa `COALESCE(NEW.id, OLD.id)` — pero
+`reunion_actas` no tiene columna `id` (su PK es `evento_id`), así que
+cualquier `INSERT`/`UPDATE` fallaba con `record "new" has no field "id"`.
+Se resolvió con una función de auditoría dedicada
+(`fn_auditoria_reunion_actas`) que usa `evento_id` en su lugar — el resto de
+tablas de este proyecto sí tienen `id`, por eso no había aparecido antes.
+
+Tiempo real solo para compromisos (canal `compromisos_cambios`) — el acta es
+un documento largo que se edita de a ratos, no una fila puntual que valga la
+pena empujar en vivo.
+
 ## Tiempo real
 
 WebSocket (`socket.io`) en el mismo puerto. El cliente se conecta con
@@ -226,9 +270,10 @@ el `id` "pelado" (sin contenido) a **todos** los sockets conectados — no
 revela nada sensible, solo que ese id dejó de existir — y cada cliente lo
 saca de su vista si lo tenía cargado.
 
-Eventos emitidos: `publicacion:cambio`, `evento:cambio`, `tarea:cambio` y
-`proyecto:cambio`, todos con la forma `{ accion, <clave>?, id? }` (el objeto
-de datos solo viene en INSERT/UPDATE; en DELETE solo viene `id`).
+Eventos emitidos: `publicacion:cambio`, `evento:cambio`, `tarea:cambio`,
+`proyecto:cambio` y `compromiso:cambio`, todos con la forma
+`{ accion, <clave>?, id? }` (el objeto de datos solo viene en INSERT/UPDATE;
+en DELETE solo viene `id`).
 
 Pruebas manuales:
 
@@ -238,6 +283,7 @@ node test-realtime.manual.js             # publicaciones: secretaría + confiden
 node test-realtime-eventos.manual.js     # eventos: creación y borrado (aviso sin contenido)
 node test-realtime-tareas.manual.js      # tareas: creación y borrado, aislado por secretaría
 node test-realtime-proyectos.manual.js   # proyectos: creación, avance y borrado
+node test-realtime-compromisos.manual.js # compromisos: creación y cambio de estado
 ```
 
 ## Arrancar

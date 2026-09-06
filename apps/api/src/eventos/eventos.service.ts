@@ -36,7 +36,17 @@ export class EventosService {
        WHERE er.evento_id = $1`,
       [id],
     );
-    return { ...rows[0], responsables };
+
+    // Se incluye para que el modulo Reuniones pueda ofrecer un selector de
+    // responsable de compromiso sin necesitar un endpoint de "listar
+    // usuarios": el creador + los invitados son el unico universo conocido
+    // y ya visible para quien puede ver este evento.
+    const { rows: creadorRows } = await this.tx.query(
+      `SELECT id, nombre, email FROM usuarios WHERE id = $1`,
+      [rows[0].creado_por],
+    );
+
+    return { ...rows[0], responsables, creador: creadorRows[0] ?? null };
   }
 
   async crear(dto: CreateEventoDto) {

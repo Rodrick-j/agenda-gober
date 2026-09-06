@@ -170,6 +170,21 @@ export interface CrearEventoInput {
   nivelConfidencialidad: NivelConfidencialidad;
 }
 
+export interface Participante {
+  id: string;
+  nombre: string;
+  email: string;
+}
+
+export interface EventoDetalle extends Evento {
+  responsables: Participante[];
+  creador: Participante | null;
+}
+
+export function getEvento(token: string, id: string) {
+  return request<EventoDetalle>(`/eventos/${id}`, {}, token);
+}
+
 export function getEventos(token: string, desde?: string, hasta?: string) {
   const params = new URLSearchParams();
   if (desde) params.set("desde", desde);
@@ -343,4 +358,58 @@ export interface IndicadoresResumen {
 
 export function getIndicadoresResumen(token: string) {
   return request<IndicadoresResumen>("/indicadores/resumen", {}, token);
+}
+
+export interface ReunionActa {
+  evento_id: string;
+  contenido: string;
+  actualizado_por: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type CompromisoEstado = "pendiente" | "cumplido";
+
+export interface Compromiso {
+  id: string;
+  evento_id: string;
+  descripcion: string;
+  responsable_id: string | null;
+  responsable_nombre: string | null;
+  fecha_limite: string | null;
+  estado: CompromisoEstado;
+  created_at: string;
+  updated_at: string;
+}
+
+export function getActa(token: string, eventoId: string) {
+  return request<ReunionActa | null>(`/eventos/${eventoId}/acta`, {}, token);
+}
+
+export function guardarActa(token: string, eventoId: string, contenido: string) {
+  return request<ReunionActa>(`/eventos/${eventoId}/acta`, { method: "PUT", body: JSON.stringify({ contenido }) }, token);
+}
+
+export function getCompromisos(token: string, eventoId: string) {
+  return request<Compromiso[]>(`/eventos/${eventoId}/compromisos`, {}, token);
+}
+
+export function crearCompromiso(
+  token: string,
+  eventoId: string,
+  data: { descripcion: string; responsableId?: string; fechaLimite?: string },
+) {
+  return request<Compromiso>(`/eventos/${eventoId}/compromisos`, { method: "POST", body: JSON.stringify(data) }, token);
+}
+
+export function actualizarCompromiso(
+  token: string,
+  id: string,
+  data: Partial<{ descripcion: string; responsableId: string; fechaLimite: string; estado: CompromisoEstado }>,
+) {
+  return request<Compromiso>(`/compromisos/${id}`, { method: "PATCH", body: JSON.stringify(data) }, token);
+}
+
+export function eliminarCompromiso(token: string, id: string) {
+  return request<{ eliminado: boolean }>(`/compromisos/${id}`, { method: "DELETE" }, token);
 }
