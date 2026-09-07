@@ -95,6 +95,9 @@ export default function DespachoPage() {
   const [fechaLimite, setFechaLimite] = useState("");
   const [guardando, setGuardando] = useState(false);
   const tituloRef = useRef<HTMLInputElement>(null);
+  // Token estable mientras el form está abierto: un doble "Emitir" (o un
+  // reintento tras error de red) devuelve la misma instrucción, no dos.
+  const tokenRef = useRef<string>("");
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -117,7 +120,10 @@ export default function DespachoPage() {
   }, [onInstruccionCambio, cargar]);
 
   useEffect(() => {
-    if (mostrarForm) tituloRef.current?.focus();
+    if (mostrarForm) {
+      tituloRef.current?.focus();
+      tokenRef.current = crypto.randomUUID();
+    }
   }, [mostrarForm]);
 
   const paraOrganizar = useMemo(() => items.filter((i) => i.estado === "emitida"), [items]);
@@ -134,6 +140,7 @@ export default function DespachoPage() {
         objetivo: objetivo.trim(),
         prioridad,
         fechaLimite: fechaLimite ? new Date(fechaLimite).toISOString() : undefined,
+        clientToken: tokenRef.current || undefined,
       });
       setTitulo("");
       setObjetivo("");

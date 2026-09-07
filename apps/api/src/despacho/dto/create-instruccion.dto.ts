@@ -1,4 +1,4 @@
-import { IsEnum, IsISO8601, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsEnum, IsISO8601, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 
 export enum InstruccionPrioridad {
   BAJA = 'baja',
@@ -28,4 +28,10 @@ export class CreateInstruccionDto {
   @IsOptional()
   @IsISO8601()
   fechaLimite?: string;
+
+  // UUID que genera el front (crypto.randomUUID) para des-duplicar un doble
+  // "Emitir": reintentar con el mismo token devuelve la instrucción existente.
+  @IsOptional()
+  @IsUUID('4')
+  clientToken?: string;
 }

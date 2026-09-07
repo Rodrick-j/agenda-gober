@@ -540,25 +540,50 @@ export interface Instruccion {
   secretarias?: number;
 }
 
+export type ItemEstadoValidacion = "en_curso" | "pendiente_validacion" | "validado" | "devuelto";
+
 export interface InstruccionItem {
   id: string;
   tipo: InstruccionItemTipo;
   ref_id: string;
   secretaria_id: string | null;
   secretaria_nombre: string | null;
+  estado_validacion: ItemEstadoValidacion;
+  peso: number;
+  motivo_devolucion: string | null;
+  evidencias_count: number;
   detalle: Record<string, unknown> | null;
 }
 
 export interface InstruccionVisto {
   usuario_id: string;
   nombre: string;
-  tipo: "visto" | "acuse";
-  visto_at: string;
+  abierto_at: string | null;
+  acuse_at: string | null;
+}
+
+export interface BitacoraEntrada {
+  accion: string;
+  motivo: string | null;
+  created_at: string;
+  actor_nombre: string | null;
+}
+
+export interface Evidencia {
+  id: string;
+  tipo: "informe" | "foto" | "documento";
+  nombre_archivo: string;
+  mime: string;
+  tamano_bytes: string;
+  nota: string | null;
+  created_at: string;
+  subido_por_nombre?: string | null;
 }
 
 export interface InstruccionDetalle extends Instruccion {
   items: InstruccionItem[];
   vistos: InstruccionVisto[];
+  bitacora: BitacoraEntrada[];
 }
 
 export function getInstrucciones() {
@@ -574,6 +599,7 @@ export function emitirInstruccion(data: {
   objetivo: string;
   prioridad?: InstruccionPrioridad;
   fechaLimite?: string;
+  clientToken?: string;
 }) {
   return request<Instruccion>("/despacho/instrucciones", { method: "POST", body: JSON.stringify(data) });
 }
@@ -618,6 +644,85 @@ export function marcarVistoInstruccion(id: string, tipo: "visto" | "acuse" = "vi
     method: "POST",
     body: JSON.stringify({ tipo }),
   });
+}
+
+export function reabrirInstruccion(id: string, motivo: string) {
+  return request<InstruccionDetalle>(`/despacho/instrucciones/${id}/reabrir`, {
+    method: "POST",
+    body: JSON.stringify({ motivo }),
+  });
+}
+
+export function getBitacoraInstruccion(id: string) {
+  return request<BitacoraEntrada[]>(`/despacho/instrucciones/${id}/bitacora`);
+}
+
+// --- Validación de ítems ---
+
+// Lo llama el responsable, que no ve la instrucción madre -> devuelve solo el ítem.
+export function solicitarValidacionItem(instId: string, itemId: string) {
+  return request<{ id: string; estado_validacion: ItemEstadoValidacion; motivo_devolucion: string | null }>(
+    `/despacho/instrucciones/${instId}/items/${itemId}/solicitar-validacion`,
+    { method: "POST" },
+  );
+}
+
+export function validarItem(instId: string, itemId: string) {
+  return request<InstruccionDetalle>(`/despacho/instrucciones/${instId}/items/${itemId}/validar`, {
+    method: "POST",
+  });
+}
+
+export function devolverItem(instId: string, itemId: string, motivo: string) {
+  return request<InstruccionDetalle>(`/despacho/instrucciones/${instId}/items/${itemId}/devolver`, {
+    method: "POST",
+    body: JSON.stringify({ motivo }),
+  });
+}
+
+// --- Evidencias ---
+
+export function getEvidencias(instId: string, itemId: string) {
+  return request<Evidencia[]>(`/despacho/instrucciones/${instId}/items/${itemId}/evidencias`);
+}
+
+export async function subirEvidencia(
+  instId: string,
+  itemId: string,
+  archivo: File,
+  tipo?: "informe" | "foto" | "documento",
+  nota?: string,
+) {
+  const form = new FormData();
+  form.append("archivo", archivo);
+  if (tipo) form.append("tipo", tipo);
+  if (nota) form.append("nota", nota);
+  const res = await fetch(
+    `${API_URL}/despacho/instrucciones/${instId}/items/${itemId}/evidencias`,
+    { method: "POST", credentials: "include", body: form },
+  );
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({ message: res.statusText }));
+    const message = Array.isArray(body.message) ? body.message.join(", ") : body.message;
+    throw new ApiError(message ?? "Error al subir la evidencia", res.status);
+  }
+  return res.json() as Promise<Evidencia>;
+}
+
+export async function descargarEvidencia(ev: Evidencia) {
+  const res = await fetch(`${API_URL}/despacho/instrucciones/evidencias/${ev.id}/descargar`, {
+    credentials: "include",
+  });
+  if (!res.ok) throw new ApiError("No se pudo descargar", res.status);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = ev.nombre_archivo;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
 }
 
 // ---- Notificaciones ----

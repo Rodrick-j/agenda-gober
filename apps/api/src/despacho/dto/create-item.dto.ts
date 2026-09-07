@@ -3,10 +3,13 @@ import {
   IsArray,
   IsEnum,
   IsISO8601,
+  IsInt,
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
+  Min,
 } from 'class-validator';
 
 export enum InstruccionItemTipo {
@@ -39,6 +42,13 @@ export class CreateItemDto {
   @IsOptional()
   @IsUUID('4')
   secretariaId?: string;
+
+  // Peso del ítem en el avance ponderado de la instrucción (1-5, default 1).
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  peso?: number;
 
   @IsOptional()
   @IsString()
