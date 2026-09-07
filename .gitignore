@@ -19,5 +19,8 @@ coverage/
 .DS_Store
 Thumbs.db
 
+# --- Backups locales de la base (scripts/backup.sh) ---
+/backups/
+
 # --- Restos de rutas mal apuntadas (cp -r con path absoluto de Windows) ---
 /Users/
