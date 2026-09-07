@@ -16,6 +16,8 @@ COPY . .
 # runtime -- por eso viaja como ARG, no como env del contenedor final.
 ARG NEXT_PUBLIC_API_URL=http://localhost:3001
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ARG NEXT_PUBLIC_SENTRY_DSN=
+ENV NEXT_PUBLIC_SENTRY_DSN=$NEXT_PUBLIC_SENTRY_DSN
 ENV NEXT_TELEMETRY_DISABLED=1
 RUN npm run build
 

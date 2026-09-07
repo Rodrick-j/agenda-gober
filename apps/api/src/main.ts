@@ -1,11 +1,19 @@
+// PRIMERO de todo: inicializa Sentry antes de que se cargue @nestjs/core.
+import './instrument';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
 import * as cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
+import { AppLogger } from './observability/app-logger';
+import { requestIdMiddleware } from './observability/request-id.middleware';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  // Logger con [req:xxxxxxxx] por request.
+  app.useLogger(new AppLogger());
+  // x-request-id entra/sale y queda en contexto para logs y Sentry.
+  app.use(requestIdMiddleware);
   // Cabeceras de seguridad HTTP (HSTS, X-Content-Type-Options, sin
   // X-Powered-By, etc.). La API es JSON puro: no sirve HTML, así que la CSP
   // por defecto de helmet no molesta a nadie.

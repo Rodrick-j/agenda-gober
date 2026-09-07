@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
-import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { SentryModule } from '@sentry/nestjs/setup';
+import { GlobalExceptionFilter } from './observability/global-exception.filter';
 import { DatabaseModule } from './database/database.module';
 import { TenantContextInterceptor } from './context/tenant-context.interceptor';
 import { PublicacionesModule } from './publicaciones/publicaciones.module';
@@ -25,6 +27,7 @@ import { HealthController } from './health.controller';
 
 @Module({
   imports: [
+    SentryModule.forRoot(),
     ConfigModule.forRoot({ isGlobal: true }),
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
@@ -47,6 +50,7 @@ import { HealthController } from './health.controller';
   ],
   controllers: [HealthController],
   providers: [
+    { provide: APP_FILTER, useClass: GlobalExceptionFilter },
     { provide: APP_GUARD, useClass: ThrottlerGuard },
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_INTERCEPTOR, useClass: TenantContextInterceptor },

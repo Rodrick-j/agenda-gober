@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs/config";
 
 // Cabeceras de seguridad para todas las respuestas del frontend. La API
 // (apps/api) pone las suyas con helmet; esto cubre el HTML/estáticos que
@@ -22,4 +23,9 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+// Envuelve la config para el SDK de Sentry. Sin authToken no sube source
+// maps (ok para empezar); silencioso para no ensuciar el build.
+export default withSentryConfig(nextConfig, {
+  silent: true,
+  sourcemaps: { disable: true },
+});
