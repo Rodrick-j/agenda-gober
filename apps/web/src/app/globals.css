@@ -5,6 +5,23 @@
   --font-mono: var(--font-geist-mono);
 }
 
+:root {
+  --oruro-deep: #02224f;
+  --oruro-navy: #043472;
+  --oruro-panel: #0451a5;
+  --oruro-electric: #0a70d6;
+  --oruro-blue: #2fa1f0;
+  --oruro-cyan: #06e5fa;
+  --oruro-cyan-light: #37f0fc;
+  --oruro-sky: #7cc7f6;
+  --oruro-text: #e3eaef;
+  --oruro-muted: #9da9bb;
+  --oruro-gold: #e99d19;
+  --oruro-orange: #f47a2f;
+  --oruro-orange-glow: #ed5611;
+  --oruro-bronze: #c67e50;
+}
+
 /* La app usa colores claros explícitos (slate/indigo) en cada componente,
    así que fijamos un fondo claro estable en vez de seguir el dark-mode del
    sistema — evita texto oscuro sobre fondo oscuro en pantallas de carga. */
@@ -35,8 +52,8 @@ select {
 }
 
 ::selection {
-  background: #8b1538;
-  color: #fff;
+  background: var(--oruro-electric);
+  color: var(--oruro-text);
 }
 
 .institutional-header::before {
@@ -45,13 +62,134 @@ select {
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(90deg, rgba(92, 5, 34, 0.98) 0%, rgba(111, 11, 43, 0.94) 43%, rgba(17, 55, 91, 0.78) 100%),
-    radial-gradient(circle at 82% 110%, rgba(255, 255, 255, 0.25) 0 2%, transparent 2.5%),
-    linear-gradient(155deg, transparent 58%, rgba(255, 255, 255, 0.11) 59% 61%, transparent 62%);
+    radial-gradient(circle at 82% 115%, rgba(6, 229, 250, 0.22), transparent 28%),
+    linear-gradient(100deg, rgba(2, 34, 79, 0.99) 0%, rgba(4, 52, 114, 0.98) 54%, rgba(4, 81, 165, 0.92) 100%),
+    linear-gradient(155deg, transparent 58%, rgba(55, 240, 252, 0.1) 59% 60%, transparent 61%);
 }
 
 .institutional-header > * {
   position: relative;
+}
+
+/* Navegación del panel: cada selección tiene una respuesta física corta,
+   un barrido de luz y una entrada suave del contenido de la ruta. */
+@keyframes sidebar-item-press {
+  0% { transform: scale(1); }
+  38% { transform: scale(0.95); }
+  68% { transform: scale(1.025); }
+  100% { transform: scale(1); }
+}
+
+@keyframes sidebar-light-sweep {
+  0% { transform: translateX(-135%) skewX(-18deg); opacity: 0; }
+  28% { opacity: 0.75; }
+  100% { transform: translateX(160%) skewX(-18deg); opacity: 0; }
+}
+
+@keyframes sidebar-icon-burst {
+  0% { transform: scale(1) rotate(0deg); }
+  45% { transform: scale(1.22) rotate(-8deg); filter: drop-shadow(0 0 7px rgba(6, 229, 250, 0.8)); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+
+@keyframes sidebar-active-in {
+  0% { opacity: 0.45; transform: translateX(-10px); box-shadow: 0 0 0 rgba(10, 112, 214, 0); }
+  62% { opacity: 1; transform: translateX(3px); box-shadow: 0 10px 30px rgba(6, 229, 250, 0.2); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes panel-page-enter {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+.institutional-sidebar::after {
+  content: "";
+  position: absolute;
+  inset: 11% 0 11% auto;
+  width: 1px;
+  pointer-events: none;
+  background: linear-gradient(to bottom, transparent, rgba(6, 229, 250, 0.5), transparent);
+  box-shadow: 0 0 14px rgba(6, 229, 250, 0.32);
+}
+
+.sidebar-nav-link::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: -45% auto -45% -35%;
+  width: 42%;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.32), transparent);
+  opacity: 0;
+  transform: translateX(-135%) skewX(-18deg);
+}
+
+.sidebar-nav-pressed {
+  animation: sidebar-item-press 440ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sidebar-nav-pressed::before {
+  animation: sidebar-light-sweep 520ms ease-out;
+}
+
+.sidebar-nav-pressed .sidebar-nav-icon {
+  animation: sidebar-icon-burst 460ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sidebar-nav-active {
+  animation: sidebar-active-in 480ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.panel-page-enter {
+  animation: panel-page-enter 320ms ease-out;
+}
+
+/* La cabecera y el pie quedan visibles; el menú ocupa el espacio restante y
+   conserva scroll propio cuando la altura no alcanza para todos los accesos. */
+@media (min-width: 1024px) and (max-height: 850px) {
+  .sidebar-brand {
+    min-height: 72px;
+  }
+
+  .sidebar-menu {
+    gap: 0.75rem;
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+  }
+
+  .sidebar-nav-link {
+    padding-top: 0.35rem;
+    padding-bottom: 0.35rem;
+  }
+
+  .sidebar-footer {
+    padding: 0.5rem 0.75rem;
+  }
+
+  .sidebar-footer-brand {
+    max-width: 9rem;
+  }
+
+  .sidebar-footer > p {
+    margin-top: 0.5rem;
+  }
+}
+
+@media (min-width: 1024px) and (max-height: 700px) {
+  .sidebar-brand {
+    min-height: 64px;
+  }
+
+  .sidebar-menu {
+    gap: 0.5rem;
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+  }
+
+  .sidebar-footer {
+    display: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -65,5 +203,168 @@ select {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+@keyframes fade-in-up {
+  0% { opacity: 0; transform: translateY(25px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fade-in-scale {
+  0% { opacity: 0; transform: scale(0.95); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes sweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.animate-sweep {
+  animation: sweep 8s ease-in-out infinite;
+}
+
+/* Zoom lento y continuo sobre la imagen del login -- le da vida sin llamar
+   la atención sobre el formulario. Sobre un <div> que envuelve un next/image
+   con fill, nunca sobre el <img> en sí. */
+@keyframes ken-burns {
+  0% { transform: scale(1); }
+  100% { transform: scale(1.035); }
+}
+
+.animate-ken-burns {
+  animation: ken-burns 22s ease-in-out infinite alternate;
+}
+
+/* Respiración sutil en la costura entre la imagen y el panel del formulario
+   -- une visualmente ambas mitades sin competir con la imagen. */
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.5; }
+  50% { opacity: 1; }
+}
+
+.animate-glow-pulse {
+  animation: glow-pulse 4.5s ease-in-out infinite;
+}
+
+/* Chrome/Edge pintan un fondo claro propio (y texto negro) en un campo con
+   autocompletado guardado, ignorando el bg-[#0a1220] del input -- por eso el
+   campo "salta" a un rectángulo claro en el login oscuro. Se fuerza el fondo
+   oscuro con un box-shadow inset (el truco estándar, ya que background no se
+   puede overridear directo en :-webkit-autofill) y el texto en blanco. */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #fff;
+  -webkit-box-shadow: 0 0 0px 1000px #02224f inset;
+  box-shadow: 0 0 0px 1000px #02224f inset;
+  transition: background-color 9999s ease-in-out 0s;
+}
+
+.animate-fade-in-up {
+  animation: fade-in-up 0.7s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  opacity: 0;
+}
+
+.animate-fade-in-scale {
+  animation: fade-in-scale 0.8s cubic-bezier(0.2, 0.8, 0.2, 1) forwards;
+  opacity: 0;
+}
+
+.delay-100 { animation-delay: 100ms; }
+.delay-200 { animation-delay: 200ms; }
+.delay-300 { animation-delay: 300ms; }
+.delay-400 { animation-delay: 400ms; }
+.delay-500 { animation-delay: 500ms; }
+
+/* En móvil, la pieza institucional funciona como fondo de toda la pantalla.
+   El panel conserva suficiente opacidad para que el formulario sea legible. */
+.login-shell {
+  display: block;
+  position: relative;
+}
+
+.login-visual {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+}
+
+.login-panel {
+  height: 100%;
+  background:
+    radial-gradient(circle at 88% 3%, rgba(47, 161, 240, 0.15), transparent 32%),
+    radial-gradient(circle at 5% 88%, rgba(6, 229, 250, 0.08), transparent 30%),
+    linear-gradient(145deg, rgba(2, 34, 79, 0.35) 0%, rgba(4, 52, 114, 0.4) 48%, rgba(2, 34, 79, 0.6) 100%);
+}
+
+.login-artwork {
+  background-image: url("/images/login-agenda-mobile.webp");
+  background-position: center top;
+  background-repeat: no-repeat;
+  background-size: 100% 100%;
+  opacity: 1;
+}
+
+.login-visual-vignette {
+  background:
+    linear-gradient(to bottom, rgba(2, 34, 79, 0.08), rgba(2, 34, 79, 0.22) 48%, rgba(2, 34, 79, 0.62)),
+    linear-gradient(to right, rgba(2, 34, 79, 0.1), transparent 45%, rgba(2, 34, 79, 0.24));
+}
+
+@media (min-width: 600px) {
+  .login-artwork {
+    background-image: url("/images/login-agenda-tablet.webp");
+    background-position: center;
+  }
+}
+
+@media (min-width: 1024px) {
+  .login-shell {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .login-visual {
+    position: relative;
+    height: 100%;
+    width: 100%;
+    background: transparent;
+  }
+
+  .login-panel {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    z-index: 10;
+    backdrop-filter: blur(16px);
+    background:
+      radial-gradient(circle at 88% 3%, rgba(47, 161, 240, 0.2), transparent 31%),
+      radial-gradient(circle at 5% 88%, rgba(6, 229, 250, 0.1), transparent 28%),
+      linear-gradient(145deg, rgba(2, 34, 79, 0.55) 0%, rgba(4, 52, 114, 0.6) 48%, rgba(2, 34, 79, 0.8) 100%);
+  }
+
+  .login-artwork {
+    opacity: 1;
+    background-size: cover;
+    -webkit-mask-image: linear-gradient(to right, rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%);
+    mask-image: linear-gradient(to right, rgba(0,0,0,1) 60%, rgba(0,0,0,0) 100%);
+  }
+
+  .login-visual-vignette {
+    background:
+      linear-gradient(to right, transparent 50%, rgba(2, 34, 79, 0.2) 80%, rgba(2, 34, 79, 0.6) 100%),
+      linear-gradient(to top, rgba(2, 34, 79, 0.1), transparent 18%);
+  }
+}
+
+/* La composición cuadrada necesita una pantalla realmente amplia. En
+   laptops y ventanas reducidas se conserva la versión tablet, cuya relación
+   vertical se adapta mejor a la columna izquierda. */
+@media (min-width: 1600px) {
+  .login-artwork {
+    background-image: url("/images/login-agenda.webp");
+    background-position: center;
   }
 }

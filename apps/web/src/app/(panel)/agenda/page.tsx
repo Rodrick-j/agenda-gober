@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import {
   actualizarEvento,
   crearEvento,
@@ -55,6 +55,7 @@ export default function AgendaPage() {
   const [horaFin, setHoraFin] = useState("10:00");
   const [nivel, setNivel] = useState<NivelConfidencialidad>("interna");
   const [guardando, setGuardando] = useState(false);
+  const tituloInputRef = useRef<HTMLInputElement>(null);
 
   const cargar = useCallback(async () => {
     setCargando(true);
@@ -71,8 +72,27 @@ export default function AgendaPage() {
   }, [calendar]);
 
   useEffect(() => {
-    void cargar();
+    queueMicrotask(() => void cargar());
   }, [cargar]);
+
+  useEffect(() => {
+    if (!mostrarForm) return;
+
+    const previousOverflow = document.body.style.overflow;
+    const focusFrame = requestAnimationFrame(() => tituloInputRef.current?.focus());
+    const cerrarConEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMostrarForm(false);
+    };
+
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", cerrarConEscape);
+
+    return () => {
+      cancelAnimationFrame(focusFrame);
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", cerrarConEscape);
+    };
+  }, [mostrarForm]);
 
   // Tiempo real: mismo canal RLS-filtrado que el resto del panel. En un
   // borrado no llega la fila (ya no existe) -- solo el id, para sacarla.
@@ -113,6 +133,7 @@ export default function AgendaPage() {
   }
 
   function abrirNuevo() {
+    setError(null);
     setEditando(null);
     setTitulo("");
     setDescripcion("");
@@ -124,6 +145,7 @@ export default function AgendaPage() {
   }
 
   function abrirEditar(ev: Evento) {
+    setError(null);
     setEditando(ev);
     setTitulo(ev.titulo);
     setDescripcion(ev.descripcion ?? "");
@@ -192,28 +214,38 @@ export default function AgendaPage() {
   while (celdas.length % 7) celdas.push(null);
 
   const hoy = new Date();
+  const fieldClass =
+    "mt-1.5 w-full rounded-xl border border-[#7CC7F6]/45 bg-[#f5f9fd] px-3.5 py-2.5 text-sm font-medium text-[#02224F] outline-none transition placeholder:text-[#9DA9BB] hover:border-[#2FA1F0]/55 focus:border-[#0A70D6] focus:bg-white focus:ring-3 focus:ring-[#2FA1F0]/15";
 
   return (
     <div className="mx-auto max-w-7xl">
       <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
-          <div className="mb-1.5 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#0d5fc1]">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#0d5fc1]" /> Agenda institucional
+          <div className="mb-1.5 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#0A70D6]">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#06E5FA] shadow-[0_0_10px_rgba(6,229,250,0.85)]" /> Agenda institucional
           </div>
           <h1 className="text-xl font-black tracking-tight text-[#102a4c] sm:text-2xl">Calendario de actividades</h1>
           <p className="mt-1 text-xs text-slate-500">
-            Reuniones y actividades · <span className="font-bold capitalize text-[#0d5fc1]">{sesion.rol}</span>
+            Reuniones y actividades · <span className="font-bold capitalize text-[#0A70D6]">{sesion.rol}</span>
           </p>
         </div>
         <button
           onClick={abrirNuevo}
-          className="inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-[#890b32] to-[#6d0828] px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-rose-900/15 transition hover:-translate-y-0.5 hover:shadow-xl"
+          aria-haspopup="dialog"
+          aria-controls="evento-dialog"
+          className="group inline-flex items-center justify-center gap-3 rounded-2xl border border-[#37F0FC]/25 bg-gradient-to-r from-[#0A70D6] to-[#0451A5] px-3.5 py-2.5 text-left text-white shadow-[0_12px_28px_rgba(10,112,214,0.24)] transition duration-200 hover:-translate-y-0.5 hover:shadow-[0_16px_34px_rgba(10,112,214,0.3)] focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-[#2FA1F0]/30"
         >
-          <InstitutionalIcon name="plus" className="h-4 w-4" /> Nuevo evento
+          <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-white/20 bg-white/10 transition group-hover:bg-white/15">
+            <InstitutionalIcon name="plus" className="h-4 w-4" />
+          </span>
+          <span className="pr-1">
+            <span className="block text-xs font-extrabold leading-tight">Nuevo evento</span>
+            <span className="mt-0.5 block text-[9px] font-medium leading-tight text-[#E3EAEF]/80">Programar actividad</span>
+          </span>
         </button>
       </div>
 
-      {error && (
+      {error && !mostrarForm && (
         <div role="alert" className="mb-4 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-medium text-red-700">
           <InstitutionalIcon name="shield" className="h-4 w-4 shrink-0" />
           {error}
@@ -260,16 +292,16 @@ export default function AgendaPage() {
                     onClick={() => setSeleccionado(fecha)}
                     className={`flex h-20 flex-col items-start gap-1.5 rounded-xl border p-2 text-left transition ${
                       esSeleccionado
-                        ? "border-[#0d5fc1] bg-blue-50 shadow-sm"
+                        ? "border-[#0A70D6] bg-[#2FA1F0]/10 shadow-sm"
                         : esHoy
                           ? "border-blue-200 bg-[#f4f8fd]"
                           : "border-transparent hover:bg-slate-50"
                     }`}
                   >
-                    <span className={`text-xs font-bold ${esSeleccionado ? "text-[#0d5fc1]" : "text-slate-600"}`}>{dia}</span>
+                    <span className={`text-xs font-bold ${esSeleccionado ? "text-[#0A70D6]" : "text-slate-600"}`}>{dia}</span>
                     <div className="flex flex-wrap items-center gap-1">
                       {items.slice(0, 3).map((it) => (
-                        <span key={it.id} className="h-1.5 w-1.5 rounded-full bg-[#890b32]" />
+                        <span key={it.id} className="h-1.5 w-1.5 rounded-full bg-[#06E5FA] shadow-[0_0_6px_rgba(6,229,250,0.7)]" />
                       ))}
                       {items.length > 3 && <span className="text-[9px] font-bold text-slate-400">+{items.length - 3}</span>}
                     </div>
@@ -329,99 +361,175 @@ export default function AgendaPage() {
       </div>
 
       {mostrarForm && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 px-4" onClick={() => setMostrarForm(false)}>
-          <form onClick={(e) => e.stopPropagation()} onSubmit={onGuardar} className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 bg-gradient-to-r from-rose-50 to-white px-5 py-3.5">
-              <h2 className="text-sm font-extrabold text-[#6f0b2b]">{editando ? "Editar evento" : "Nuevo evento"}</h2>
-              <button type="button" onClick={() => setMostrarForm(false)} className="text-slate-400 hover:text-slate-700">
-                <InstitutionalIcon name="chevronDown" className="h-4 w-4" />
-              </button>
+        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6">
+          <button
+            type="button"
+            aria-label="Cerrar ventana de evento"
+            onClick={() => setMostrarForm(false)}
+            className="absolute inset-0 cursor-default bg-[#02224F]/72 backdrop-blur-[5px]"
+          />
+
+          <form
+            id="evento-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="evento-dialog-title"
+            onSubmit={onGuardar}
+            className="animate-fade-in-up relative flex max-h-[94dvh] w-full max-w-2xl flex-col overflow-hidden rounded-t-[1.75rem] border border-[#7CC7F6]/30 bg-white shadow-[0_30px_90px_rgba(2,34,79,0.48)] sm:rounded-[1.75rem]"
+          >
+            <div className="h-1 shrink-0 bg-gradient-to-r from-[#06E5FA] via-[#2FA1F0] to-[#E99D19]" />
+
+            <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-[#043472] via-[#0451A5] to-[#02224F] px-5 py-5 text-white sm:px-7">
+              <div className="pointer-events-none absolute -right-14 -top-20 h-44 w-44 rounded-full border border-[#37F0FC]/15" />
+              <div className="pointer-events-none absolute -right-3 -top-10 h-28 w-28 rounded-full border border-[#37F0FC]/10" />
+              <div className="relative flex items-start justify-between gap-4">
+                <div className="flex min-w-0 items-center gap-3.5">
+                  <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-[#37F0FC]/30 bg-[#06E5FA]/10 text-[#37F0FC] shadow-[0_0_24px_rgba(6,229,250,0.12)]">
+                    <InstitutionalIcon name="calendar" className="h-5 w-5" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="mb-1 text-[9px] font-extrabold uppercase tracking-[0.2em] text-[#37F0FC]">
+                      {editando ? "Actualizar agenda" : "Agenda institucional"}
+                    </p>
+                    <h2 id="evento-dialog-title" className="text-lg font-black tracking-tight sm:text-xl">
+                      {editando ? "Editar evento" : "Programar nuevo evento"}
+                    </h2>
+                    <p className="mt-1 text-[11px] font-medium text-[#E3EAEF]/75">
+                      Organiza la fecha, el horario y el nivel de acceso de la actividad.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setMostrarForm(false)}
+                  aria-label="Cerrar"
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/15 bg-white/8 text-[#E3EAEF] transition hover:border-[#37F0FC]/35 hover:bg-white/15 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#37F0FC]/50"
+                >
+                  <InstitutionalIcon name="plus" className="h-4 w-4 rotate-45" />
+                </button>
+              </div>
             </div>
-            <div className="space-y-3 p-5">
-              <label className="block text-xs font-bold text-slate-700">
-                Título
-                <input
-                  value={titulo}
-                  onChange={(e) => setTitulo(e.target.value)}
-                  required
-                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-normal outline-none transition focus:border-blue-400 focus:bg-white focus:ring-3 focus:ring-blue-100"
-                />
-              </label>
-              <label className="block text-xs font-bold text-slate-700">
-                Fecha
-                <input
-                  type="date"
-                  value={seleccionado.toISOString().slice(0, 10)}
-                  onChange={(e) => setSeleccionado(new Date(`${e.target.value}T00:00:00`))}
-                  required
-                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-normal outline-none transition focus:border-blue-400 focus:bg-white focus:ring-3 focus:ring-blue-100"
-                />
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="block text-xs font-bold text-slate-700">
-                  Hora inicio
+
+            <div className="overflow-y-auto bg-[linear-gradient(145deg,#ffffff_0%,#f4f8fd_100%)] px-5 py-5 sm:px-7 sm:py-6">
+              <div className="mb-4 flex items-center gap-2 text-[9px] font-extrabold uppercase tracking-[0.16em] text-[#0A70D6]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[#06E5FA] shadow-[0_0_8px_rgba(6,229,250,0.8)]" />
+                Detalles de la actividad
+              </div>
+
+              {error && (
+                <div role="alert" className="mb-4 flex items-center gap-2.5 rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-xs font-semibold text-red-700">
+                  <InstitutionalIcon name="shield" className="h-4 w-4 shrink-0" />
+                  {error}
+                </div>
+              )}
+
+              <div className="grid gap-x-4 gap-y-4 sm:grid-cols-2">
+                <label className="block text-xs font-extrabold text-[#02224F] sm:col-span-2">
+                  Título <span className="text-[#0A70D6]">*</span>
+                  <input
+                    ref={tituloInputRef}
+                    value={titulo}
+                    onChange={(e) => setTitulo(e.target.value)}
+                    required
+                    placeholder="Ej. Reunión de coordinación interinstitucional"
+                    className={fieldClass}
+                  />
+                </label>
+
+                <label className="block text-xs font-extrabold text-[#02224F]">
+                  Fecha <span className="text-[#0A70D6]">*</span>
+                  <input
+                    type="date"
+                    value={seleccionado.toISOString().slice(0, 10)}
+                    onChange={(e) => setSeleccionado(new Date(`${e.target.value}T00:00:00`))}
+                    required
+                    className={fieldClass}
+                  />
+                </label>
+
+                <label className="block text-xs font-extrabold text-[#02224F]">
+                  Confidencialidad
+                  <select
+                    value={nivel}
+                    onChange={(e) => setNivel(e.target.value as NivelConfidencialidad)}
+                    className={fieldClass}
+                  >
+                    <option value="publica">Pública</option>
+                    <option value="interna">Interna</option>
+                    <option value="reservada">Reservada</option>
+                    <option value="confidencial">Confidencial</option>
+                  </select>
+                </label>
+
+                <label className="block text-xs font-extrabold text-[#02224F]">
+                  Hora de inicio <span className="text-[#0A70D6]">*</span>
                   <input
                     type="time"
                     value={horaInicio}
                     onChange={(e) => setHoraInicio(e.target.value)}
                     required
-                    className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-normal outline-none transition focus:border-blue-400 focus:bg-white focus:ring-3 focus:ring-blue-100"
+                    className={fieldClass}
                   />
                 </label>
-                <label className="block text-xs font-bold text-slate-700">
-                  Hora fin
+
+                <label className="block text-xs font-extrabold text-[#02224F]">
+                  Hora de finalización <span className="text-[#0A70D6]">*</span>
                   <input
                     type="time"
                     value={horaFin}
                     onChange={(e) => setHoraFin(e.target.value)}
                     required
-                    className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-normal outline-none transition focus:border-blue-400 focus:bg-white focus:ring-3 focus:ring-blue-100"
+                    className={fieldClass}
+                  />
+                </label>
+
+                <label className="block text-xs font-extrabold text-[#02224F] sm:col-span-2">
+                  Lugar
+                  <input
+                    value={lugar}
+                    onChange={(e) => setLugar(e.target.value)}
+                    placeholder="Ej. Sala de gabinete, edificio central"
+                    className={fieldClass}
+                  />
+                </label>
+
+                <label className="block text-xs font-extrabold text-[#02224F] sm:col-span-2">
+                  Descripción
+                  <textarea
+                    value={descripcion}
+                    onChange={(e) => setDescripcion(e.target.value)}
+                    rows={3}
+                    placeholder="Añade el objetivo o los puntos principales del evento..."
+                    className={`${fieldClass} min-h-24 resize-y leading-relaxed`}
                   />
                 </label>
               </div>
-              <label className="block text-xs font-bold text-slate-700">
-                Lugar
-                <input
-                  value={lugar}
-                  onChange={(e) => setLugar(e.target.value)}
-                  placeholder="Ej. Sala de gabinete"
-                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-normal outline-none transition focus:border-blue-400 focus:bg-white focus:ring-3 focus:ring-blue-100"
-                />
-              </label>
-              <label className="block text-xs font-bold text-slate-700">
-                Confidencialidad
-                <select
-                  value={nivel}
-                  onChange={(e) => setNivel(e.target.value as NivelConfidencialidad)}
-                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-normal outline-none transition focus:border-blue-400 focus:bg-white focus:ring-3 focus:ring-blue-100"
-                >
-                  <option value="publica">Pública</option>
-                  <option value="interna">Interna</option>
-                  <option value="reservada">Reservada</option>
-                  <option value="confidencial">Confidencial</option>
-                </select>
-              </label>
-              <label className="block text-xs font-bold text-slate-700">
-                Descripción
-                <textarea
-                  value={descripcion}
-                  onChange={(e) => setDescripcion(e.target.value)}
-                  rows={3}
-                  className="mt-1.5 w-full resize-y rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-normal leading-relaxed outline-none transition focus:border-blue-400 focus:bg-white focus:ring-3 focus:ring-blue-100"
-                />
-              </label>
             </div>
-            <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-3.5">
-              <button type="button" onClick={() => setMostrarForm(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50">
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                disabled={guardando}
-                className="rounded-xl bg-[#0d5fc1] px-5 py-2 text-xs font-bold text-white shadow-md shadow-blue-200 transition hover:bg-[#094f9f] disabled:cursor-wait disabled:opacity-60"
-              >
-                {guardando ? "Guardando…" : editando ? "Guardar cambios" : "Crear evento"}
-              </button>
+
+            <div className="flex shrink-0 flex-col gap-3 border-t border-[#7CC7F6]/25 bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-7">
+              <div className="hidden items-center gap-2 text-[10px] font-medium text-[#71829a] sm:flex">
+                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#2FA1F0]/10 text-[#0A70D6]">
+                  <InstitutionalIcon name="clock" className="h-3.5 w-3.5" />
+                </span>
+                Se añadirá al calendario institucional.
+              </div>
+              <div className="flex gap-2 sm:justify-end">
+                <button
+                  type="button"
+                  onClick={() => setMostrarForm(false)}
+                  className="flex-1 rounded-xl border border-[#9DA9BB]/45 bg-white px-4 py-2.5 text-xs font-extrabold text-[#52647c] transition hover:border-[#7CC7F6] hover:bg-[#f5f9fd] sm:flex-none"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={guardando}
+                  className="inline-flex flex-1 items-center justify-center gap-2 rounded-xl border border-[#37F0FC]/25 bg-gradient-to-r from-[#0A70D6] to-[#0451A5] px-5 py-2.5 text-xs font-extrabold text-white shadow-[0_8px_20px_rgba(10,112,214,0.22)] transition hover:-translate-y-0.5 hover:shadow-[0_11px_24px_rgba(10,112,214,0.28)] disabled:cursor-wait disabled:translate-y-0 disabled:opacity-60 sm:flex-none"
+                >
+                  <InstitutionalIcon name={guardando ? "clock" : "check"} className="h-4 w-4" />
+                  {guardando ? "Guardando…" : editando ? "Guardar cambios" : "Crear evento"}
+                </button>
+              </div>
             </div>
           </form>
         </div>

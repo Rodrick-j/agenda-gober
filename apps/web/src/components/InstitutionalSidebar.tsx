@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { InstitutionalIcon, type IconName } from "@/components/InstitutionalIcon";
@@ -78,7 +79,7 @@ function MenuGroup({ title, items, pathname, onNavigate }: { title: string; item
   const [pressedHref, setPressedHref] = useState<string | null>(null);
 
   return (
-    <div>
+    <div className="shrink-0">
       <p className="mb-2 px-4 text-[10px] font-bold uppercase tracking-[0.19em] text-[#7CC7F6]/70">{title}</p>
       <div className="space-y-1">
         {items.map((item) => {
@@ -145,10 +146,12 @@ export function InstitutionalSidebar({ rol, onNavigate, onCollapse }: Props) {
 
   return (
     <nav aria-label="Navegación principal" className="institutional-sidebar relative flex h-full flex-col overflow-hidden border-r border-[#37F0FC]/15 bg-gradient-to-b from-[#02224F] via-[#043472]/60 to-[#01142F] text-[#E3EAEF]">
-      <div className="sidebar-brand relative flex min-h-[92px] items-center overflow-hidden border-b border-[#7CC7F6]/15 bg-gradient-to-br from-[#043472]/80 via-[#0451A5]/80 to-[#02224F]/80 px-5 backdrop-blur-sm">
+      <div className="sidebar-brand relative flex min-h-[92px] shrink-0 items-center overflow-hidden border-b border-[#7CC7F6]/15 bg-gradient-to-br from-[#043472]/80 via-[#0451A5]/80 to-[#02224F]/80 px-3 backdrop-blur-sm">
         <div className="absolute -right-8 -top-8 h-28 w-28 rounded-full border border-[#37F0FC]/15 bg-[#06E5FA]/[0.03]" />
         <div className="absolute -right-2 top-8 h-16 w-16 rounded-full border border-[#E99D19]/20" />
-        <div className="relative"><InstitutionalMark compact /></div>
+        <div className="relative flex w-[174px] items-center rounded-xl border border-white/70 bg-white/[.96] px-2.5 py-2 shadow-[0_8px_24px_rgba(1,20,47,.24)]">
+          <InstitutionalMark compact className="h-auto w-full" />
+        </div>
         {onCollapse && (
           <button
             type="button"
@@ -162,7 +165,7 @@ export function InstitutionalSidebar({ rol, onNavigate, onCollapse }: Props) {
         )}
       </div>
 
-      <div className="sidebar-menu min-h-0 flex-1 space-y-6 overflow-y-auto bg-transparent px-3 py-5 [scrollbar-color:#0A70D6_transparent] [scrollbar-width:thin] lg:overflow-hidden">
+      <div className="sidebar-menu flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain bg-transparent px-3 py-4 [scrollbar-color:#0A70D6_transparent] [scrollbar-width:thin]">
         {secciones.map((seccion) => (
           <MenuGroup
             key={seccion.title}
@@ -174,30 +177,19 @@ export function InstitutionalSidebar({ rol, onNavigate, onCollapse }: Props) {
         ))}
       </div>
 
-      <div className="sidebar-footer border-t border-[#7CC7F6]/10 bg-gradient-to-t from-[#01142F] to-transparent p-4 pb-6">
-        <div className="relative mt-6 flex justify-center">
-          {/* Luz de fondo para resaltar la imagen oscura */}
-          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-            <div className="h-28 w-44 rounded-full bg-white/10 blur-2xl" />
-            <div className="absolute h-16 w-28 rounded-full bg-[#37F0FC]/15 blur-xl" />
-          </div>
-          <style>{`
-            @keyframes float-img {
-              0%, 100% { transform: translateY(0); }
-              50% { transform: translateY(-6px); }
-            }
-            .animate-float-img {
-              animation: float-img 4s ease-in-out infinite;
-            }
-          `}</style>
-          <img 
-            src="/images/marca_gobierno.png" 
-            alt="Marca Gobierno Oruro" 
-            className="animate-float-img relative z-10 h-auto w-52 object-contain opacity-100 drop-shadow-[0_4px_12px_rgba(255,255,255,0.15)] transition-all duration-300 hover:scale-110 hover:drop-shadow-[0_8px_16px_rgba(255,255,255,0.3)]" 
+      <div className="sidebar-footer shrink-0 border-t border-[#7CC7F6]/10 bg-gradient-to-t from-[#01142F] to-transparent px-3 py-3">
+        <div className="sidebar-footer-brand relative mx-auto flex w-full max-w-[184px] items-center justify-center overflow-hidden rounded-xl border border-white/60 bg-white/[.94] px-2 py-1.5 shadow-[0_8px_24px_rgba(1,20,47,.3)]">
+          <Image
+            src="/images/marca_gobierno.png"
+            alt="Marca Gobierno de Unidad"
+            width={1500}
+            height={700}
+            sizes="168px"
+            className="h-auto w-full object-contain"
           />
         </div>
-        
-        <p className="mt-6 text-center text-[9px] uppercase tracking-[0.16em] text-[#9DA9BB]/45">Oruro avanza · v1.0</p>
+
+        <p className="mt-2 text-center text-[9px] uppercase tracking-[0.16em] text-[#9DA9BB]/55">Oruro avanza · v1.0</p>
       </div>
     </nav>
   );

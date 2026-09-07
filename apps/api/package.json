@@ -29,6 +29,7 @@
     "@nestjs/passport": "^10.0.3",
     "@nestjs/platform-express": "^10.0.0",
     "@nestjs/platform-socket.io": "^10.4.22",
+    "@nestjs/schedule": "^4.1.2",
     "@nestjs/throttler": "^5.2.0",
     "@nestjs/websockets": "^10.4.22",
     "bcrypt": "^6.0.0",

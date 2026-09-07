@@ -24,8 +24,8 @@ function Topbar({
   const iniciales = sesion.email.slice(0, 2).toUpperCase();
 
   return (
-    <header className="institutional-header sticky top-0 z-20 flex min-h-[92px] items-center justify-between overflow-hidden border-b border-[#37F0FC]/20 bg-[#02224F] px-4 text-[#E3EAEF] shadow-[0_10px_32px_rgba(2,34,79,.2)] sm:px-6">
-      <div className="flex items-center gap-4">
+    <header className="institutional-header sticky top-0 z-20 isolate flex min-h-[92px] items-center justify-between overflow-visible border-b border-[#37F0FC]/20 bg-[#02224F] px-4 text-[#E3EAEF] shadow-[0_10px_32px_rgba(2,34,79,.2)] sm:px-6">
+      <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
         <button
           onClick={onMenu}
           className="group relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-[#7CC7F6]/20 bg-[#0451A5]/55 text-[#E3EAEF] shadow-[0_7px_18px_rgba(2,34,79,.22)] transition-all duration-300 hover:-translate-y-0.5 hover:border-[#37F0FC]/45 hover:bg-[#0A70D6]/70 hover:shadow-[0_9px_22px_rgba(6,229,250,.13)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#06E5FA]/35"
@@ -48,15 +48,15 @@ function Topbar({
         </div>
       </div>
 
-      <div className="flex items-center gap-4">
-        <div className="hidden items-center gap-2 rounded-full border border-[#7CC7F6]/20 bg-[#043472]/70 px-3 py-1.5 backdrop-blur sm:flex">
+      <div className="ml-3 flex shrink-0 items-center gap-2 sm:gap-3 lg:gap-4">
+        <div className="hidden items-center gap-2 rounded-full border border-[#7CC7F6]/20 bg-[#043472]/70 px-3 py-1.5 backdrop-blur xl:flex">
           <span className="relative flex h-2 w-2">
             {conectado && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#06E5FA] opacity-75" />}
             <span className={`relative inline-flex h-2 w-2 rounded-full ${conectado ? "bg-[#06E5FA]" : "bg-[#F47A2F]"}`} />
           </span>
           <span className="text-[10px] font-bold uppercase tracking-[0.12em] text-[#E3EAEF]/90">{conectado ? "En línea" : "Sin conexión"}</span>
         </div>
-        <div className="hidden text-right sm:block">
+        <div className="hidden text-right lg:block">
           <p className="max-w-48 truncate text-xs font-semibold text-[#E3EAEF]" translate="no">
             {sesion.email}
           </p>

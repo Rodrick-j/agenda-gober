@@ -26,6 +26,7 @@ export type IconName =
   | "check"
   | "lock"
   | "eye"
+  | "eyeOff"
   | "filter"
   | "megaphone"
   | "layers"
@@ -87,6 +88,8 @@ function IconPath({ name }: { name: IconName }) {
       return <><rect x="5" y="10" width="14" height="11" rx="2" /><path strokeLinecap="round" d="M8 10V7a4 4 0 0 1 8 0v3" /></>;
     case "eye":
       return <><path strokeLinecap="round" strokeLinejoin="round" d="M2 12s3.5-6 10-6 10 6 10 6-3.5 6-10 6S2 12 2 12Z" /><circle cx="12" cy="12" r="2.5" /></>;
+    case "eyeOff":
+      return <><path strokeLinecap="round" strokeLinejoin="round" d="M9.88 9.88a3 3 0 1 0 4.24 4.24" /><path strokeLinecap="round" strokeLinejoin="round" d="M10.73 5.08A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a13.16 13.16 0 0 1-1.67 2.68" /><path strokeLinecap="round" strokeLinejoin="round" d="M6.61 6.61A13.526 13.526 0 0 0 2 12s3 7 10 7a9.74 9.74 0 0 0 5.39-1.61" /><line strokeLinecap="round" strokeLinejoin="round" x1="2" x2="22" y1="2" y2="22" /></>;
     case "filter":
       return <path strokeLinecap="round" strokeLinejoin="round" d="M4 5h16l-6 7v6l-4 2v-8L4 5Z" />;
     case "megaphone":
