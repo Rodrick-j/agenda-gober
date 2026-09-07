@@ -6,9 +6,14 @@ import {
   asignarTarea,
   crearTarea,
   eliminarTarea,
+  getDespachoItemsPorTareas,
   getMiembros,
   getTareas,
+  solicitarValidacionItem,
+  subirEvidencia,
   type CrearTareaInput,
+  type DespachoItemDeTarea,
+  type ItemEstadoValidacion,
   type NivelConfidencialidad,
   type Participante,
   type Tarea,
@@ -48,6 +53,74 @@ function venceEn(fecha: string | null): { texto: string; vencida: boolean } | nu
   return { texto: `Vence en ${dias} d`, vencida: false };
 }
 
+const VAL_LABEL: Record<ItemEstadoValidacion, string> = {
+  en_curso: "En curso",
+  pendiente_validacion: "Esperando validación de Gabinete",
+  validado: "Validado",
+  devuelto: "Devuelto por Gabinete",
+};
+const VAL_CLS: Record<ItemEstadoValidacion, string> = {
+  en_curso: "bg-[#E3EAEF] text-[#52647c]",
+  pendiente_validacion: "bg-[#E99D19]/15 text-[#a67200]",
+  validado: "bg-[#2FBF71]/15 text-[#1c7a46]",
+  devuelto: "bg-[#F47A2F]/15 text-[#a63c0d]",
+};
+
+// Bloque del Despacho dentro de una tarjeta de tarea: el responsable adjunta
+// evidencia y pide la validación sin salir de Tareas.
+function DespachoBloque({
+  info,
+  puedeActuar,
+  subiendo,
+  onSubir,
+  onPedir,
+}: {
+  info: DespachoItemDeTarea;
+  puedeActuar: boolean;
+  subiendo: boolean;
+  onSubir: (f: File) => void;
+  onPedir: () => void;
+}) {
+  const abierto = info.estado_validacion === "en_curso" || info.estado_validacion === "devuelto";
+  return (
+    <div className="mt-2 rounded-lg border border-[#0A70D6]/20 bg-[#0A70D6]/[0.05] p-2">
+      <p className="flex flex-wrap items-center gap-1.5 text-[9px] font-extrabold uppercase tracking-wide text-[#0451A5]">
+        <InstitutionalIcon name="layers" className="h-3 w-3" /> Despacho
+        <span className={`rounded-full px-1.5 py-0.5 text-[9px] normal-case ${VAL_CLS[info.estado_validacion]}`}>
+          {VAL_LABEL[info.estado_validacion]}
+        </span>
+      </p>
+      {info.estado_validacion === "devuelto" && info.motivo_devolucion && (
+        <p className="mt-1 text-[10px] text-[#a63c0d]">Motivo: {info.motivo_devolucion}</p>
+      )}
+      {puedeActuar && abierto && (
+        <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+          <label className="cursor-pointer rounded-md border border-[#7CC7F6]/50 bg-white px-2 py-1 text-[10px] font-bold text-[#0451A5] transition hover:bg-[#f5f9fd]">
+            {subiendo ? "Subiendo…" : `Adjuntar evidencia (${info.evidencias_count})`}
+            <input
+              type="file"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) onSubir(f);
+                e.target.value = "";
+              }}
+            />
+          </label>
+          <button
+            type="button"
+            disabled={info.evidencias_count === 0}
+            onClick={onPedir}
+            className="rounded-md border border-[#E99D19]/50 bg-[#E99D19]/10 px-2 py-1 text-[10px] font-bold text-[#a67200] transition hover:bg-[#E99D19]/20 disabled:opacity-50"
+          >
+            Pedir validación
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function TareasPage() {
   const { sesion } = useSession();
   const { onTareaCambio } = useRealtime();
@@ -68,6 +141,9 @@ export default function TareasPage() {
   const [guardando, setGuardando] = useState(false);
   const tituloInputRef = useRef<HTMLInputElement>(null);
 
+  const [despacho, setDespacho] = useState<Record<string, DespachoItemDeTarea>>({});
+  const [subiendoTarea, setSubiendoTarea] = useState<string | null>(null);
+
   const cargar = useCallback(async () => {
     setCargando(true);
     setError(null);
@@ -75,12 +151,39 @@ export default function TareasPage() {
       const [t, m] = await Promise.all([getTareas(), getMiembros().catch(() => [] as Participante[])]);
       setTareas(t);
       setMiembros(m);
+      const disp = await getDespachoItemsPorTareas(t.map((x) => x.id)).catch(
+        () => ({}) as Record<string, DespachoItemDeTarea>,
+      );
+      setDespacho(disp);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Error cargando las tareas");
     } finally {
       setCargando(false);
     }
   }, []);
+
+  async function onSubirEvidencia(tareaId: string, itemId: string, file: File) {
+    setSubiendoTarea(tareaId);
+    setError(null);
+    try {
+      await subirEvidencia(itemId, file);
+      await cargar();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo subir la evidencia");
+    } finally {
+      setSubiendoTarea(null);
+    }
+  }
+
+  async function onPedirValidacion(itemId: string) {
+    setError(null);
+    try {
+      await solicitarValidacionItem(itemId);
+      await cargar();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "No se pudo pedir la validación");
+    }
+  }
 
   useEffect(() => {
     queueMicrotask(() => void cargar());
@@ -302,6 +405,15 @@ export default function TareasPage() {
                           <p className={`mb-1.5 text-[10px] font-bold ${vence.vencida ? "text-red-600" : "text-slate-400"}`}>
                             {vence.texto}
                           </p>
+                        )}
+                        {despacho[t.id] && (
+                          <DespachoBloque
+                            info={despacho[t.id]}
+                            puedeActuar={miRango < 99}
+                            subiendo={subiendoTarea === t.id}
+                            onSubir={(f) => onSubirEvidencia(t.id, despacho[t.id].id, f)}
+                            onPedir={() => onPedirValidacion(despacho[t.id].id)}
+                          />
                         )}
                         {(t.estado === "pendiente" || t.estado === "en_progreso") && (
                           <div className="mt-2 flex flex-wrap gap-2">

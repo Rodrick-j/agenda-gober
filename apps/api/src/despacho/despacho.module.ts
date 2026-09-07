@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
 import { ContextModule } from '../context/context.module';
-import { DespachoController } from './despacho.controller';
+import { DespachoController, DespachoItemsController } from './despacho.controller';
 import { DespachoService } from './despacho.service';
 
 @Module({
   imports: [ContextModule],
-  controllers: [DespachoController],
+  controllers: [DespachoController, DespachoItemsController],
   providers: [DespachoService],
 })
 export class DespachoModule {}

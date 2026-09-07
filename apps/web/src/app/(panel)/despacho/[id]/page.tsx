@@ -162,7 +162,7 @@ export default function InstruccionDetallePage() {
     }
     setExpandido(itemId);
     if (!evidencias[itemId]) {
-      const lista = await getEvidencias(id, itemId).catch(() => [] as Evidencia[]);
+      const lista = await getEvidencias(itemId).catch(() => [] as Evidencia[]);
       setEvidencias((prev) => ({ ...prev, [itemId]: lista }));
     }
   }
@@ -171,8 +171,8 @@ export default function InstruccionDetallePage() {
     setSubiendo(itemId);
     setError(null);
     try {
-      await subirEvidencia(id, itemId, file);
-      const lista = await getEvidencias(id, itemId).catch(() => [] as Evidencia[]);
+      await subirEvidencia(itemId, file);
+      const lista = await getEvidencias(itemId).catch(() => [] as Evidencia[]);
       setEvidencias((prev) => ({ ...prev, [itemId]: lista }));
       setExpandido(itemId);
       cargar();
@@ -390,7 +390,7 @@ export default function InstruccionDetallePage() {
                         <button
                           type="button"
                           disabled={it.evidencias_count === 0}
-                          onClick={() => accion(() => solicitarValidacionItem(id, it.id), "No se pudo pedir la validación")}
+                          onClick={() => accion(() => solicitarValidacionItem(it.id), "No se pudo pedir la validación")}
                           className={`${btnMini} border-[#E99D19]/50 bg-[#E99D19]/10 text-[#a67200] hover:bg-[#E99D19]/20 disabled:opacity-50`}
                         >
                           Pedir validación

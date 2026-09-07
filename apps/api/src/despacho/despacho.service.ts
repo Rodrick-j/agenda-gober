@@ -260,15 +260,17 @@ export class DespachoService {
 
   // --- Validación --------------------------------------------------------
 
-  // La llama el responsable de la tarea, que NO puede ver la instrucción
-  // madre -- por eso devuelve solo el ítem, no obtener().
-  async solicitarValidacion(instruccionId: string, itemId: string) {
+  // La llama el responsable de la tarea (desde /tareas o el detalle), que NO
+  // puede ver la instrucción madre -- por eso es item-scoped y devuelve solo
+  // el ítem. RLS + fn_validar_edicion_item hacen cumplir el permiso y la regla
+  // de "al menos una evidencia".
+  async solicitarValidacion(itemId: string) {
     try {
       const { rows } = await this.tx.query(
         `UPDATE instruccion_items SET estado_validacion = 'pendiente_validacion'
-         WHERE id = $1 AND instruccion_id = $2
-         RETURNING id, estado_validacion, motivo_devolucion`,
-        [itemId, instruccionId],
+         WHERE id = $1
+         RETURNING id, instruccion_id, estado_validacion, motivo_devolucion`,
+        [itemId],
       );
       if (!rows.length) throw new NotFoundException('Ítem no encontrado o sin permiso para esta acción');
       return rows[0];
@@ -276,6 +278,23 @@ export class DespachoService {
       if (err instanceof NotFoundException) throw err;
       mapPgError(err);
     }
+  }
+
+  // Info del ítem de Despacho para cada tarea dada (o vacío si la tarea no es
+  // parte de un Despacho / no la ve el usuario). Para pintar el bloque de
+  // validación en la lista de Tareas sin ir al detalle.
+  async itemsPorTareas(tareaIds: string[]) {
+    const { rows } = await this.tx.query(
+      `SELECT ii.ref_id AS tarea_id, ii.id, ii.instruccion_id, ii.estado_validacion,
+              ii.motivo_devolucion,
+              (SELECT count(*)::int FROM item_evidencias e WHERE e.item_id = ii.id) AS evidencias_count
+       FROM instruccion_items ii
+       WHERE ii.tipo = 'tarea' AND ii.ref_id = ANY($1::uuid[])`,
+      [tareaIds],
+    );
+    const out: Record<string, (typeof rows)[number]> = {};
+    for (const r of rows) out[r.tarea_id] = r;
+    return out;
   }
 
   async validarItem(instruccionId: string, itemId: string) {
@@ -320,11 +339,8 @@ export class DespachoService {
 
   // --- Evidencias ------------------------------------------------------------
 
-  async listarEvidencias(instruccionId: string, itemId: string) {
-    const { rows: ok } = await this.tx.query(
-      `SELECT 1 FROM instruccion_items WHERE id = $1 AND instruccion_id = $2`,
-      [itemId, instruccionId],
-    );
+  async listarEvidencias(itemId: string) {
+    const { rows: ok } = await this.tx.query(`SELECT 1 FROM instruccion_items WHERE id = $1`, [itemId]);
     if (!ok.length) throw new NotFoundException('Ítem no encontrado');
     const { rows } = await this.tx.query(
       `SELECT e.id, e.tipo, e.nombre_archivo, e.mime, e.tamano_bytes, e.nota, e.created_at,
@@ -339,16 +355,12 @@ export class DespachoService {
   }
 
   async subirEvidencia(
-    instruccionId: string,
     itemId: string,
     file: { originalname: string; mimetype: string; size: number; buffer: Buffer },
     meta: EvidenciaMetaDto,
   ) {
     const { userId } = this.tx.currentUser;
-    const { rows: ok } = await this.tx.query(
-      `SELECT 1 FROM instruccion_items WHERE id = $1 AND instruccion_id = $2`,
-      [itemId, instruccionId],
-    );
+    const { rows: ok } = await this.tx.query(`SELECT 1 FROM instruccion_items WHERE id = $1`, [itemId]);
     if (!ok.length) throw new NotFoundException('Ítem no encontrado');
     try {
       const { rows } = await this.tx.query(

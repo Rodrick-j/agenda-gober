@@ -659,12 +659,30 @@ export function getBitacoraInstruccion(id: string) {
 
 // --- Validación de ítems ---
 
-// Lo llama el responsable, que no ve la instrucción madre -> devuelve solo el ítem.
-export function solicitarValidacionItem(instId: string, itemId: string) {
-  return request<{ id: string; estado_validacion: ItemEstadoValidacion; motivo_devolucion: string | null }>(
-    `/despacho/instrucciones/${instId}/items/${itemId}/solicitar-validacion`,
-    { method: "POST" },
-  );
+// Item-scoped: lo usa el responsable, que no ve la instrucción madre.
+export interface DespachoItemDeTarea {
+  id: string;
+  instruccion_id: string;
+  estado_validacion: ItemEstadoValidacion;
+  motivo_devolucion: string | null;
+  evidencias_count: number;
+}
+
+export function getDespachoItemsPorTareas(tareaIds: string[]) {
+  if (tareaIds.length === 0) return Promise.resolve({} as Record<string, DespachoItemDeTarea>);
+  return request<Record<string, DespachoItemDeTarea>>("/despacho/items/por-tareas", {
+    method: "POST",
+    body: JSON.stringify({ tareaIds }),
+  });
+}
+
+export function solicitarValidacionItem(itemId: string) {
+  return request<{
+    id: string;
+    instruccion_id: string;
+    estado_validacion: ItemEstadoValidacion;
+    motivo_devolucion: string | null;
+  }>(`/despacho/items/${itemId}/solicitar-validacion`, { method: "POST" });
 }
 
 export function validarItem(instId: string, itemId: string) {
@@ -682,12 +700,11 @@ export function devolverItem(instId: string, itemId: string, motivo: string) {
 
 // --- Evidencias ---
 
-export function getEvidencias(instId: string, itemId: string) {
-  return request<Evidencia[]>(`/despacho/instrucciones/${instId}/items/${itemId}/evidencias`);
+export function getEvidencias(itemId: string) {
+  return request<Evidencia[]>(`/despacho/items/${itemId}/evidencias`);
 }
 
 export async function subirEvidencia(
-  instId: string,
   itemId: string,
   archivo: File,
   tipo?: "informe" | "foto" | "documento",
@@ -697,10 +714,11 @@ export async function subirEvidencia(
   form.append("archivo", archivo);
   if (tipo) form.append("tipo", tipo);
   if (nota) form.append("nota", nota);
-  const res = await fetch(
-    `${API_URL}/despacho/instrucciones/${instId}/items/${itemId}/evidencias`,
-    { method: "POST", credentials: "include", body: form },
-  );
+  const res = await fetch(`${API_URL}/despacho/items/${itemId}/evidencias`, {
+    method: "POST",
+    credentials: "include",
+    body: form,
+  });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ message: res.statusText }));
     const message = Array.isArray(body.message) ? body.message.join(", ") : body.message;
@@ -710,7 +728,7 @@ export async function subirEvidencia(
 }
 
 export async function descargarEvidencia(ev: Evidencia) {
-  const res = await fetch(`${API_URL}/despacho/instrucciones/evidencias/${ev.id}/descargar`, {
+  const res = await fetch(`${API_URL}/despacho/items/evidencias/${ev.id}/descargar`, {
     credentials: "include",
   });
   if (!res.ok) throw new ApiError("No se pudo descargar", res.status);
