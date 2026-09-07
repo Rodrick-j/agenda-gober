@@ -301,4 +301,50 @@ describe('Despacho — instrucciones / rollup / notificaciones', () => {
     );
     expect(rows[0].tipo).toBe('acuse');
   });
+
+  it('SLA: instrucción emitida sin acuse tras el plazo → recordatorio al jefe (una sola vez)', async () => {
+    await setContext('gobernador', '', uGobernador);
+    const { rows } = await db.query<{ id: string }>(
+      `INSERT INTO instrucciones (titulo, objetivo, prioridad, emitida_por)
+       VALUES ('SLA recordatorio', 'x', 'media', $1) RETURNING id`,
+      [uGobernador],
+    );
+    const slaId = rows[0].id;
+    // 'media' -> SLA 24h; la ponemos 30h atrás
+    await db.query(`UPDATE instrucciones SET created_at = now() - interval '30 hours' WHERE id = $1`, [slaId]);
+
+    await db.query('SELECT fn_despacho_sweep()');
+    await db.query('SELECT fn_despacho_sweep()'); // segundo barrido: no debe duplicar
+
+    await setContext('jefe_gabinete', '', uJefe);
+    const notif = await db.query(
+      `SELECT count(*)::int AS n FROM notificaciones WHERE tipo = 'acuse_recordatorio' AND origen_id = $1`,
+      [slaId],
+    );
+    expect(notif.rows[0].n).toBe(1);
+  });
+
+  it('SLA: pasado 2× el plazo sin acuse → escala al Gobernador + bitácora', async () => {
+    await setContext('gobernador', '', uGobernador);
+    const { rows } = await db.query<{ id: string }>(
+      `INSERT INTO instrucciones (titulo, objetivo, prioridad, emitida_por)
+       VALUES ('SLA escala', 'x', 'media', $1) RETURNING id`,
+      [uGobernador],
+    );
+    const escId = rows[0].id;
+    await db.query(`UPDATE instrucciones SET created_at = now() - interval '60 hours' WHERE id = $1`, [escId]);
+
+    await db.query('SELECT fn_despacho_sweep()');
+
+    const notif = await db.query(
+      `SELECT count(*)::int AS n FROM notificaciones WHERE tipo = 'acuse_sin_respuesta' AND origen_id = $1`,
+      [escId],
+    );
+    expect(notif.rows[0].n).toBe(1);
+    const bit = await db.query(
+      `SELECT count(*)::int AS n FROM instruccion_bitacora WHERE instruccion_id = $1 AND accion = 'acuse_escalado'`,
+      [escId],
+    );
+    expect(bit.rows[0].n).toBe(1);
+  });
 });
