@@ -1,6 +1,7 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { TxService } from '../context/tx.service';
 import { mapPgError } from '../common/pg-error.util';
+import { limites, paginar } from '../common/paginacion';
 import { CreatePublicacionDto } from './dto/create-publicacion.dto';
 import { EstadoPublicacion } from './dto/update-estado.dto';
 
@@ -10,14 +11,17 @@ export class PublicacionesService {
 
   // No filtra por secretaría ni por nivel de confidencialidad en el SQL: eso
   // lo hace la política RLS de publicaciones_select (rol_rango >= nivel_rango).
-  findAll() {
-    return this.tx
-      .query(
-        `SELECT id, secretaria_id, titulo, contenido, nivel_confidencialidad, estado, created_at
-         FROM publicaciones
-         ORDER BY created_at DESC`,
-      )
-      .then((r) => r.rows);
+  async findAll(pagina?: string, porPagina?: string) {
+    const lim = limites(pagina, porPagina);
+    const { rows } = await this.tx.query(
+      `SELECT id, secretaria_id, titulo, contenido, nivel_confidencialidad, estado, created_at,
+              count(*) OVER() AS _total
+       FROM publicaciones
+       ORDER BY created_at DESC
+       LIMIT $1 OFFSET $2`,
+      [lim.limit, lim.offset],
+    );
+    return paginar(rows, lim);
   }
 
   async create(dto: CreatePublicacionDto) {

@@ -1,6 +1,7 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { TxService } from '../context/tx.service';
 import { mapPgError } from '../common/pg-error.util';
+import { limites, paginar } from '../common/paginacion';
 import { CreateTareaDto } from './dto/create-tarea.dto';
 import { UpdateTareaDto } from './dto/update-tarea.dto';
 
@@ -32,14 +33,16 @@ export class TareasService {
 
   // RLS filtra secretaria + rango de confidencialidad + asignados, igual que
   // eventos_agenda. estado es opcional para poder pintar un tablero por columna.
-  async listar(estado?: string) {
+  async listar(estado?: string, pagina?: string, porPagina?: string) {
+    const lim = limites(pagina, porPagina);
     const { rows } = await this.tx.query(
-      `SELECT ${SELECT_CON_ASIGNADOS} FROM tareas t
+      `SELECT ${SELECT_CON_ASIGNADOS}, count(*) OVER() AS _total FROM tareas t
        WHERE $1::tarea_estado IS NULL OR t.estado = $1::tarea_estado
-       ORDER BY t.fecha_vencimiento NULLS LAST, t.created_at DESC`,
-      [estado ?? null],
+       ORDER BY t.fecha_vencimiento NULLS LAST, t.created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [estado ?? null, lim.limit, lim.offset],
     );
-    return rows;
+    return paginar(rows, lim);
   }
 
   async obtener(id: string) {

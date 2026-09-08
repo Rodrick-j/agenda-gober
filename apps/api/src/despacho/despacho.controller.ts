@@ -7,6 +7,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   StreamableFile,
   UploadedFile,
   UseInterceptors,
@@ -28,8 +29,8 @@ export class DespachoController {
   constructor(private readonly service: DespachoService) {}
 
   @Get()
-  listar() {
-    return this.service.listar();
+  listar(@Query('pagina') pagina?: string, @Query('porPagina') porPagina?: string) {
+    return this.service.listar(pagina, porPagina);
   }
 
   @Get(':id')

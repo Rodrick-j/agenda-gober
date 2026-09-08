@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { PublicacionesService } from './publicaciones.service';
 import { CreatePublicacionDto } from './dto/create-publicacion.dto';
 import { UpdateEstadoDto } from './dto/update-estado.dto';
@@ -8,8 +8,8 @@ export class PublicacionesController {
   constructor(private readonly service: PublicacionesService) {}
 
   @Get()
-  findAll() {
-    return this.service.findAll();
+  findAll(@Query('pagina') pagina?: string, @Query('porPagina') porPagina?: string) {
+    return this.service.findAll(pagina, porPagina);
   }
 
   @Post()

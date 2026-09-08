@@ -22,6 +22,24 @@ export class ApiError extends Error {
   }
 }
 
+// Todos los listados del backend devuelven este envelope (cap duro de 100 por
+// página). Las funciones getX() de abajo desenvuelven .datos para no romper
+// las páginas que todavía no tienen paginador; getXPaginado() da el objeto
+// completo para las que sí.
+export interface Paginado<T> {
+  datos: T[];
+  total: number;
+  pagina: number;
+  porPagina: number;
+  paginas: number;
+}
+
+async function lista<T>(path: string): Promise<T[]> {
+  const sep = path.includes("?") ? "&" : "?";
+  const r = await request<Paginado<T>>(`${path}${sep}porPagina=100`);
+  return r.datos;
+}
+
 // El access token dura 15 min. Cuando expira, un request da 401: se llama
 // UNA vez a /auth/refresh (que renueva las cookies con el refresh token) y se
 // reintenta. Un solo refresh en vuelo aunque caigan varios 401 a la vez.
@@ -96,7 +114,7 @@ export function getMe() {
 }
 
 export function getPublicaciones() {
-  return request<Publicacion[]>("/publicaciones");
+  return lista<Publicacion>("/publicaciones");
 }
 
 export function crearPublicacion(data: { titulo: string; contenido: string; nivelConfidencialidad: NivelConfidencialidad }) {
@@ -152,7 +170,13 @@ export interface RegistroAuditoria {
 }
 
 export function getAuditoria() {
-  return request<RegistroAuditoria[]>("/auditoria");
+  return lista<RegistroAuditoria>("/auditoria");
+}
+
+export function getAuditoriaPaginada(pagina = 1, porPagina = 30) {
+  return request<Paginado<RegistroAuditoria>>(
+    `/auditoria?pagina=${pagina}&porPagina=${porPagina}`,
+  );
 }
 
 export interface Documento {
@@ -297,7 +321,7 @@ export interface CrearTareaInput {
 }
 
 export function getTareas() {
-  return request<Tarea[]>("/tareas");
+  return lista<Tarea>("/tareas");
 }
 
 export function crearTarea(data: CrearTareaInput) {
@@ -403,7 +427,7 @@ export interface ActualizarProyectoInput extends Partial<CrearProyectoInput> {
 }
 
 export function getProyectos() {
-  return request<Proyecto[]>("/proyectos");
+  return lista<Proyecto>("/proyectos");
 }
 
 export function crearProyecto(data: CrearProyectoInput) {
@@ -514,7 +538,7 @@ export interface ActualizarUsuarioInput {
 }
 
 export function getUsuarios() {
-  return request<UsuarioAdmin[]>("/admin/usuarios");
+  return lista<UsuarioAdmin>("/admin/usuarios");
 }
 
 export function crearUsuario(data: CrearUsuarioInput) {
@@ -608,7 +632,7 @@ export interface InstruccionDetalle extends Instruccion {
 }
 
 export function getInstrucciones() {
-  return request<Instruccion[]>("/despacho/instrucciones");
+  return lista<Instruccion>("/despacho/instrucciones");
 }
 
 export function getInstruccion(id: string) {

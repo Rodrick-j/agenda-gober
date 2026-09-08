@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { TxService } from '../context/tx.service';
+import { limites, paginar } from '../common/paginacion';
 import { mapPgError } from '../common/pg-error.util';
 import { CreateInstruccionDto } from './dto/create-instruccion.dto';
 import { UpdateInstruccionDto } from './dto/update-instruccion.dto';
@@ -26,16 +27,20 @@ const FIELDS = `
 export class DespachoService {
   constructor(private readonly tx: TxService) {}
 
-  async listar() {
+  async listar(pagina?: string, porPagina?: string) {
+    const lim = limites(pagina, porPagina);
     const { rows } = await this.tx.query(
       `SELECT ${FIELDS},
          (SELECT count(*)::int FROM instruccion_items ii WHERE ii.instruccion_id = i.id) AS items_total,
          (SELECT count(DISTINCT ii.secretaria_id)::int FROM instruccion_items ii
-            WHERE ii.instruccion_id = i.id AND ii.secretaria_id IS NOT NULL) AS secretarias
+            WHERE ii.instruccion_id = i.id AND ii.secretaria_id IS NOT NULL) AS secretarias,
+         count(*) OVER() AS _total
        FROM instrucciones i
-       ORDER BY i.en_riesgo DESC, i.fecha_limite ASC NULLS LAST, i.created_at DESC`,
+       ORDER BY i.en_riesgo DESC, i.fecha_limite ASC NULLS LAST, i.created_at DESC
+       LIMIT $1 OFFSET $2`,
+      [lim.limit, lim.offset],
     );
-    return rows;
+    return paginar(rows, lim);
   }
 
   async obtener(id: string) {

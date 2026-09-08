@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { RolesGuard } from '../common/roles.guard';
 import { Roles } from '../common/roles.decorator';
 import { AdminService } from './admin.service';
@@ -14,8 +14,8 @@ export class AdminController {
   constructor(private readonly service: AdminService) {}
 
   @Get()
-  listar() {
-    return this.service.listar();
+  listar(@Query('pagina') pagina?: string, @Query('porPagina') porPagina?: string) {
+    return this.service.listar(pagina, porPagina);
   }
 
   @Post()

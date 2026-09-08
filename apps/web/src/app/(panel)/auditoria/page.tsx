@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getAuditoria, type RegistroAuditoria } from "@/lib/api";
+import { useCallback, useEffect, useState } from "react";
+import { getAuditoriaPaginada, type RegistroAuditoria } from "@/lib/api";
 import { useSession } from "@/lib/session-context";
 import { rangoDeRol } from "@/lib/roles";
 import { InstitutionalIcon } from "@/components/InstitutionalIcon";
@@ -32,24 +32,43 @@ function resumenCambio(r: RegistroAuditoria): string {
   return "—";
 }
 
+const POR_PAGINA = 30;
+
 export default function AuditoriaPage() {
   const { sesion } = useSession();
   const [registros, setRegistros] = useState<RegistroAuditoria[]>([]);
   const [cargando, setCargando] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [pagina, setPagina] = useState(1);
+  const [total, setTotal] = useState(0);
+  const [paginas, setPaginas] = useState(1);
 
   const esTransversal = rangoDeRol(sesion.rol) >= 99;
+
+  const cargar = useCallback(
+    (p: number) => {
+      setCargando(true);
+      setError(null);
+      getAuditoriaPaginada(p, POR_PAGINA)
+        .then((r) => {
+          setRegistros(r.datos);
+          setTotal(r.total);
+          setPaginas(r.paginas);
+          setPagina(r.pagina);
+        })
+        .catch((err) => setError(err instanceof Error ? err.message : "Error"))
+        .finally(() => setCargando(false));
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!esTransversal) {
       setCargando(false);
       return;
     }
-    getAuditoria()
-      .then(setRegistros)
-      .catch((err) => setError(err instanceof Error ? err.message : "Error"))
-      .finally(() => setCargando(false));
-  }, [esTransversal]);
+    cargar(1);
+  }, [esTransversal, cargar]);
 
   if (!esTransversal) {
     return (
@@ -73,7 +92,7 @@ export default function AuditoriaPage() {
           <span className="h-1.5 w-1.5 rounded-full bg-[#0d5fc1]" /> Trazabilidad institucional
         </div>
         <h1 className="text-xl font-black tracking-tight text-[#102a4c] sm:text-2xl">Auditoría</h1>
-        <p className="mt-1 text-xs text-slate-500">Registro inmutable de cambios · últimos 200 eventos</p>
+        <p className="mt-1 text-xs text-slate-500">Registro inmutable de cambios · {total} eventos</p>
       </div>
 
       {error && (
@@ -87,7 +106,11 @@ export default function AuditoriaPage() {
         <PanelTitle
           icon="audit"
           title="Historial de cambios"
-          action={<span className="text-[10px] font-semibold text-slate-400">{registros.length} registros</span>}
+          action={
+            <span className="text-[10px] font-semibold text-slate-400">
+              Página {pagina} de {paginas}
+            </span>
+          }
         />
 
         {cargando ? (
@@ -141,6 +164,33 @@ export default function AuditoriaPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        )}
+
+        {paginas > 1 && (
+          <div className="flex items-center justify-between border-t border-slate-100 px-4 py-2.5 text-xs">
+            <span className="text-slate-500">{total} eventos</span>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                disabled={pagina <= 1 || cargando}
+                onClick={() => cargar(pagina - 1)}
+                className="rounded-lg border border-slate-200 px-2.5 py-1 font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-40"
+              >
+                Anterior
+              </button>
+              <span className="px-2 font-semibold text-slate-500">
+                {pagina} / {paginas}
+              </span>
+              <button
+                type="button"
+                disabled={pagina >= paginas || cargando}
+                onClick={() => cargar(pagina + 1)}
+                className="rounded-lg border border-slate-200 px-2.5 py-1 font-semibold text-slate-600 transition hover:bg-slate-50 disabled:opacity-40"
+              >
+                Siguiente
+              </button>
+            </div>
           </div>
         )}
       </Panel>

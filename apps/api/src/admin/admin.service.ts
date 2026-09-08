@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { hashPassword } from '../common/password.util';
+import { limites, paginar } from '../common/paginacion';
 import { TxService } from '../context/tx.service';
 import { ActualizarUsuarioDto, CrearUsuarioDto, ResetPasswordDto, RolNombre } from './dto/usuario.dto';
 import { ActualizarSecretariaDto, CrearSecretariaDto } from './dto/secretaria.dto';
@@ -34,16 +35,19 @@ export class AdminService {
     }
   }
 
-  async listar() {
+  async listar(pagina?: string, porPagina?: string) {
+    const lim = limites(pagina, porPagina);
     const { rows } = await this.tx.query(
-      `SELECT ${SELECT_FIELDS}
+      `SELECT ${SELECT_FIELDS}, count(*) OVER() AS _total
        FROM usuarios u
        LEFT JOIN secretarias s ON s.id = u.secretaria_id
        LEFT JOIN usuario_roles ur ON ur.usuario_id = u.id
        LEFT JOIN roles r ON r.id = ur.rol_id
-       ORDER BY u.created_at DESC`,
+       ORDER BY u.created_at DESC
+       LIMIT $1 OFFSET $2`,
+      [lim.limit, lim.offset],
     );
-    return rows;
+    return paginar(rows, lim);
   }
 
   async crear(dto: CrearUsuarioDto) {

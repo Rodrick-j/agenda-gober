@@ -1,6 +1,7 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { TxService } from '../context/tx.service';
 import { mapPgError } from '../common/pg-error.util';
+import { limites, paginar } from '../common/paginacion';
 import { CreateProyectoDto, UpdateProyectoDto } from './dto/create-proyecto.dto';
 
 const SELECT_FIELDS = `
@@ -12,14 +13,16 @@ const SELECT_FIELDS = `
 export class ProyectosService {
   constructor(private readonly tx: TxService) {}
 
-  async listar(estado?: string) {
+  async listar(estado?: string, pagina?: string, porPagina?: string) {
+    const lim = limites(pagina, porPagina);
     const { rows } = await this.tx.query(
-      `SELECT ${SELECT_FIELDS} FROM proyectos
+      `SELECT ${SELECT_FIELDS}, count(*) OVER() AS _total FROM proyectos
        WHERE $1::proyecto_estado IS NULL OR estado = $1::proyecto_estado
-       ORDER BY created_at DESC`,
-      [estado ?? null],
+       ORDER BY created_at DESC
+       LIMIT $2 OFFSET $3`,
+      [estado ?? null, lim.limit, lim.offset],
     );
-    return rows;
+    return paginar(rows, lim);
   }
 
   async obtener(id: string) {

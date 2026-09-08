@@ -7,8 +7,12 @@ export class ProyectosController {
   constructor(private readonly service: ProyectosService) {}
 
   @Get()
-  listar(@Query('estado') estado?: string) {
-    return this.service.listar(estado);
+  listar(
+    @Query('estado') estado?: string,
+    @Query('pagina') pagina?: string,
+    @Query('porPagina') porPagina?: string,
+  ) {
+    return this.service.listar(estado, pagina, porPagina);
   }
 
   @Get(':id')
