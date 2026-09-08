@@ -115,6 +115,8 @@ export class AdminService {
         `INSERT INTO usuario_roles (usuario_id, rol_id, secretaria_id) VALUES ($1, $2, $3)`,
         [id, rolId, secretariaId],
       );
+      // Cambió el rol/secretaría: que renueve la sesión con la identidad nueva.
+      await this.revocarSesiones(id);
     }
 
     const campos: string[] = [];
@@ -133,6 +135,9 @@ export class AdminService {
       await this.tx.query(`UPDATE usuarios SET ${campos.join(', ')} WHERE id = $${i}`, valores);
     }
 
+    // Si lo desactivaron, cortarle todas las sesiones al instante.
+    if (dto.activo === false) await this.revocarSesiones(id);
+
     return this.obtener(id);
   }
 
@@ -140,7 +145,19 @@ export class AdminService {
     await this.obtener(id);
     const passwordHash = await hashPassword(dto.password);
     await this.tx.query(`UPDATE usuarios SET password_hash = $1 WHERE id = $2`, [passwordHash, id]);
+    // Clave cambiada: se cierran las sesiones abiertas.
+    await this.revocarSesiones(id);
     return { ok: true };
+  }
+
+  // sesiones no tiene RLS (se consulta antes de que exista contexto de
+  // sesión, ver 019_sesiones.sql); la barrera acá es el RolesGuard('admin')
+  // del controller.
+  private async revocarSesiones(usuarioId: string) {
+    await this.tx.query(
+      `UPDATE sesiones SET revocada_at = now() WHERE usuario_id = $1 AND revocada_at IS NULL`,
+      [usuarioId],
+    );
   }
 
   // Justo lo que forzó el reemplazo manual de las 6 secretarías de prueba

@@ -1,14 +1,15 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { OnGatewayConnection, OnGatewayDisconnect, WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
 import { JwtService } from '@nestjs/jwt';
+import { Pool } from 'pg';
 import { Server, Socket } from 'socket.io';
 import { parse as parseCookies } from 'cookie';
+import { PG_POOL } from '../database/database.module';
 import type { AuthenticatedUser, JwtPayload } from '../auth/jwt-payload';
 
 // credentials: true + origen explícito (nunca '*' -- el navegador rechaza
-// mandar cookies a un wildcard) porque el JWT ahora viaja en la cookie
-// httpOnly del handshake, no en un payload de auth armado a mano por JS.
-// Mismo criterio multi-origen que main.ts (WEB_ORIGIN separado por comas).
+// mandar cookies a un wildcard) porque el JWT viaja en la cookie httpOnly del
+// handshake. Mismo criterio multi-origen que main.ts.
 const WS_ORIGINS = (process.env.WEB_ORIGIN ?? 'http://localhost:3002')
   .split(',')
   .map((o) => o.trim())
@@ -22,13 +23,14 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   @WebSocketServer()
   server: Server;
 
-  constructor(private readonly jwt: JwtService) {}
+  constructor(
+    private readonly jwt: JwtService,
+    @Inject(PG_POOL) private readonly pool: Pool,
+  ) {}
 
-  // No hay handshake HTTP con Guards acá (los guards globales no aplican a
-  // WebSockets), así que el JWT se verifica a mano con el mismo secreto/
-  // servicio que usa el login -- pero ahora se lee de la cookie que el
-  // navegador ya adjuntó solo, igual que en cualquier request HTTP normal
-  // (el cliente se conecta con `withCredentials: true`, sin tocar el token).
+  // Los guards HTTP no aplican a WebSockets: se verifica el JWT a mano y,
+  // como el token ya no lleva rol/secretaría, se releen de la base (misma
+  // consulta que JwtStrategy.validate: sesión viva + usuario activo).
   async handleConnection(client: Socket) {
     const rawCookies = client.handshake.headers.cookie;
     const token = rawCookies ? parseCookies(rawCookies).access_token : undefined;
@@ -38,11 +40,29 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
     }
     try {
       const payload = await this.jwt.verifyAsync<JwtPayload>(token);
+      const { rows } = await this.pool.query(
+        `SELECT u.id, u.email, u.secretaria_id, r.nombre AS rol
+         FROM sesiones s
+         JOIN usuarios u       ON u.id = s.usuario_id
+         JOIN usuario_roles ur ON ur.usuario_id = u.id
+         JOIN roles r          ON r.id = ur.rol_id
+         WHERE s.id = $1 AND s.usuario_id = $2
+           AND s.revocada_at IS NULL AND s.expira_at > now() AND u.activo = true
+         ORDER BY ur.secretaria_id NULLS LAST
+         LIMIT 1`,
+        [payload.sid, payload.sub],
+      );
+      if (rows.length === 0) {
+        client.disconnect(true);
+        return;
+      }
+      const u = rows[0];
       const user: AuthenticatedUser = {
-        userId: payload.sub,
-        email: payload.email,
-        rol: payload.rol,
-        secretariaId: payload.secretariaId,
+        userId: u.id,
+        email: u.email,
+        rol: u.rol,
+        secretariaId: u.secretaria_id,
+        sid: payload.sid,
       };
       client.data.user = user;
     } catch {
@@ -51,8 +71,7 @@ export class RealtimeGateway implements OnGatewayConnection, OnGatewayDisconnect
   }
 
   handleDisconnect() {
-    // No hay estado propio que limpiar: socket.io ya saca el socket de
-    // server.sockets.sockets al desconectarse.
+    // socket.io ya saca el socket de server.sockets.sockets al desconectarse.
   }
 
   getAuthenticatedSockets(): Array<Socket & { data: { user: AuthenticatedUser } }> {

@@ -22,10 +22,26 @@ export class ApiError extends Error {
   }
 }
 
-// credentials: "include" en cada request: la sesión vive en una cookie
-// httpOnly (access_token) que el navegador adjunta solo -- nunca hay un
-// token legible por JavaScript que pasar a mano acá.
-async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
+// El access token dura 15 min. Cuando expira, un request da 401: se llama
+// UNA vez a /auth/refresh (que renueva las cookies con el refresh token) y se
+// reintenta. Un solo refresh en vuelo aunque caigan varios 401 a la vez.
+let refreshEnCurso: Promise<boolean> | null = null;
+
+async function intentarRefresh(): Promise<boolean> {
+  if (!refreshEnCurso) {
+    refreshEnCurso = fetch(`${API_URL}/auth/refresh`, { method: "POST", credentials: "include" })
+      .then((r) => r.ok)
+      .catch(() => false)
+      .finally(() => {
+        refreshEnCurso = null;
+      });
+  }
+  return refreshEnCurso;
+}
+
+// credentials: "include" en cada request: la sesión vive en cookies httpOnly
+// (access_token / refresh_token) que el navegador adjunta solo.
+async function request<T>(path: string, options: RequestInit = {}, _reintento = false): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
     credentials: "include",
@@ -35,10 +51,15 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
     },
   });
 
+  // 401 en un endpoint normal -> probar refrescar y reintentar una vez.
+  const esAuth = path.startsWith("/auth/login") || path.startsWith("/auth/refresh");
+  if (res.status === 401 && !_reintento && !esAuth) {
+    if (await intentarRefresh()) return request<T>(path, options, true);
+  }
+
   // Nest manda el body totalmente vacío (Content-Length: 0) cuando un
-  // handler devuelve null -- no el string "null" -- así que res.json()
-  // revienta con "Unexpected end of JSON input". Se lee como texto primero
-  // y solo se parsea si hay algo, tanto acá como en la rama de error.
+  // handler devuelve null -- res.json() revienta con "Unexpected end of JSON
+  // input". Se lee como texto y solo se parsea si hay algo.
   const text = await res.text();
   const body = text ? JSON.parse(text) : null;
 

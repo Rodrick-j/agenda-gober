@@ -14,9 +14,9 @@ import { JwtStrategy } from './jwt.strategy';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         secret: config.getOrThrow<string>('JWT_SECRET'),
-        // Corto a propósito: el contexto RLS confía en los claims del token
-        // sin volver a consultar la base de datos en cada request.
-        signOptions: { expiresIn: '2h' },
+        // Access token corto: JwtStrategy.validate revalida la sesión contra
+        // la base en cada request, y el refresh token lo renueva sin fricción.
+        signOptions: { expiresIn: config.get<string>('JWT_ACCESS_TTL') ?? '15m' },
       }),
     }),
   ],
