@@ -59,13 +59,16 @@ export class AdminService {
 
     const passwordHash = await hashPassword(dto.password);
     const secretariaId = dto.secretariaId ?? null;
+    // El email se guarda normalizado (el login lo compara con lower() igual,
+    // pero así no quedan duplicados tipo Admin@x / admin@x).
+    const email = dto.email.trim().toLowerCase();
 
     try {
       const { rows } = await this.tx.query(
         `INSERT INTO usuarios (nombre, email, secretaria_id, password_hash)
          VALUES ($1, $2, $3, $4)
          RETURNING id`,
-        [dto.nombre, dto.email, secretariaId, passwordHash],
+        [dto.nombre, email, secretariaId, passwordHash],
       );
       const usuarioId = rows[0].id;
 

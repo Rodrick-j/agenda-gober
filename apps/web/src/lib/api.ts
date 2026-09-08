@@ -97,9 +97,11 @@ export interface SesionUsuario {
 }
 
 export function login(email: string, password: string) {
+  // El email va normalizado (sin espacios, en minúscula): que un teclado que
+  // autocapitaliza o un espacio pegado no den "credenciales inválidas".
   return request<{ user: SesionUsuario }>("/auth/login", {
     method: "POST",
-    body: JSON.stringify({ email, password }),
+    body: JSON.stringify({ email: email.trim().toLowerCase(), password }),
   });
 }
 

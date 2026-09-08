@@ -76,10 +76,10 @@ export class AuthService {
        FROM usuarios u
        JOIN usuario_roles ur ON ur.usuario_id = u.id
        JOIN roles r          ON r.id = ur.rol_id
-       WHERE u.email = $1 AND u.activo = true
+       WHERE lower(u.email) = lower($1) AND u.activo = true
        ORDER BY ur.secretaria_id NULLS LAST
        LIMIT 1`,
-      [dto.email],
+      [dto.email.trim()],
     );
 
     // Mismo mensaje si el email no existe o si la clave es incorrecta.
