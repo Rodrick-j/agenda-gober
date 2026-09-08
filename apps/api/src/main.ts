@@ -1,4 +1,5 @@
-// PRIMERO de todo: inicializa Sentry antes de que se cargue @nestjs/core.
+// Orden importa: 1) resolver secretos *_FILE, 2) inicializar Sentry, 3) resto.
+import './env';
 import './instrument';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
@@ -21,7 +22,7 @@ async function bootstrap() {
   // Acepta uno o varios orígenes (staging + prod + previews) separados por
   // coma. credentials: true no admite '*' -- el navegador rechaza mandar la
   // cookie httpOnly del login a un wildcard.
-  const origins = (process.env.WEB_ORIGIN ?? 'http://localhost:3002')
+  const origins = (process.env.WEB_ORIGIN ?? 'http://localhost:8500')
     .split(',')
     .map((o) => o.trim())
     .filter(Boolean);

@@ -71,8 +71,12 @@ services:
       DB_NAME: ${POSTGRES_DB}
       DB_USER: ${APP_DB_USER}
       DB_PASSWORD: ${APP_DB_PASSWORD}
-      JWT_SECRET: ${JWT_SECRET:?define JWT_SECRET en .env}
-      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3002}
+      # JWT_SECRET desde .env, o JWT_SECRET_FILE con un archivo montado (más
+      # seguro, no queda en `docker inspect`). Ver docs/SECRETS.md. La API
+      # valida al arrancar que no sea de ejemplo ni corto.
+      JWT_SECRET: ${JWT_SECRET:-}
+      JWT_SECRET_FILE: ${JWT_SECRET_FILE:-}
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:8500}
       SENTRY_DSN: ${SENTRY_DSN:-}
       SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0.1}
     ports:
@@ -92,9 +96,9 @@ services:
       - api
     environment:
       NODE_ENV: production
-      PORT: 3002
+      PORT: 8500
     ports:
-      - "127.0.0.1:3002:3002"
+      - "127.0.0.1:8500:8500"
 
 volumes:
   agenda_gober_full_pgdata:

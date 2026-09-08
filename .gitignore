@@ -22,5 +22,8 @@ Thumbs.db
 # --- Backups locales de la base (scripts/backup.sh) ---
 /backups/
 
+# --- Secretos para Docker/K8s (contenido de archivos, ver docs/SECRETS.md) ---
+/secrets/
+
 # --- Restos de rutas mal apuntadas (cp -r con path absoluto de Windows) ---
 /Users/

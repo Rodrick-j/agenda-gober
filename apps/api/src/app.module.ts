@@ -5,6 +5,7 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { SentryModule } from '@sentry/nestjs/setup';
 import { GlobalExceptionFilter } from './observability/global-exception.filter';
+import { validarEntorno } from './config/secretos';
 import { DatabaseModule } from './database/database.module';
 import { TenantContextInterceptor } from './context/tenant-context.interceptor';
 import { PublicacionesModule } from './publicaciones/publicaciones.module';
@@ -28,7 +29,7 @@ import { HealthController } from './health.controller';
 @Module({
   imports: [
     SentryModule.forRoot(),
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({ isGlobal: true, validate: validarEntorno }),
     ScheduleModule.forRoot(),
     ThrottlerModule.forRoot([{ ttl: 60_000, limit: 100 }]),
     DatabaseModule,
