@@ -65,14 +65,21 @@ describe('Mesa de trabajo de Agenda (e2e real)', () => {
       `INSERT INTO sesiones (usuario_id, refresh_hash, expira_at) VALUES ($1, $2, now() + interval '30 days') RETURNING id`,
       [usuarioId, hashRefresh(refreshCrudo)],
     );
-    const accessToken = await jwt.signAsync({ sub: usuarioId, sid: s.rows[0].id });
+    const accessToken = await jwt.signAsync({
+      sub: usuarioId,
+      sid: s.rows[0].id,
+    });
     return `access_token=${accessToken}`;
   }
 
   async function crearUsuario(nombre: string, rolNombre: string) {
     const u = await db.query<{ id: string }>(
       `INSERT INTO usuarios (nombre, email, secretaria_id, activo) VALUES ($1,$2,$3,true) RETURNING id`,
-      [nombre, `${nombre.toLowerCase().replace(/\s+/g, '.')}-${rand}@mesa.test`, null],
+      [
+        nombre,
+        `${nombre.toLowerCase().replace(/\s+/g, '.')}-${rand}@mesa.test`,
+        null,
+      ],
     );
     const id = u.rows[0].id;
     await db.query(
@@ -90,7 +97,11 @@ describe('Mesa de trabajo de Agenda (e2e real)', () => {
     app = moduleFixture.createNestApplication();
     app.use(cookieParser());
     app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }),
+      new ValidationPipe({
+        whitelist: true,
+        forbidNonWhitelisted: true,
+        transform: true,
+      }),
     );
     await app.init();
     await app.listen(0);
@@ -130,12 +141,30 @@ describe('Mesa de trabajo de Agenda (e2e real)', () => {
         // "permission denied for table evento_indicaciones" intentando lo
         // contrario). Su FK a eventos_agenda es ON DELETE CASCADE, así que
         // se limpia sola al borrar el evento de abajo.
-        await db.query(`DELETE FROM evento_colaboradores WHERE evento_id = ANY($1::uuid[])`, [eventoIds]);
-        await db.query(`DELETE FROM evento_responsables WHERE evento_id = ANY($1::uuid[])`, [eventoIds]);
-        await db.query(`DELETE FROM eventos_agenda WHERE id = ANY($1::uuid[])`, [eventoIds]);
-        await db.query(`DELETE FROM sesiones WHERE usuario_id = ANY($1::uuid[])`, [usuarioIds]);
-        await db.query(`DELETE FROM usuario_roles WHERE usuario_id = ANY($1::uuid[])`, [usuarioIds]);
-        await db.query(`UPDATE usuarios SET activo=false WHERE id = ANY($1::uuid[])`, [usuarioIds]);
+        await db.query(
+          `DELETE FROM evento_colaboradores WHERE evento_id = ANY($1::uuid[])`,
+          [eventoIds],
+        );
+        await db.query(
+          `DELETE FROM evento_responsables WHERE evento_id = ANY($1::uuid[])`,
+          [eventoIds],
+        );
+        await db.query(
+          `DELETE FROM eventos_agenda WHERE id = ANY($1::uuid[])`,
+          [eventoIds],
+        );
+        await db.query(
+          `DELETE FROM sesiones WHERE usuario_id = ANY($1::uuid[])`,
+          [usuarioIds],
+        );
+        await db.query(
+          `DELETE FROM usuario_roles WHERE usuario_id = ANY($1::uuid[])`,
+          [usuarioIds],
+        );
+        await db.query(
+          `UPDATE usuarios SET activo=false WHERE id = ANY($1::uuid[])`,
+          [usuarioIds],
+        );
         await db.query('COMMIT');
 
         const restantes = await db.query<{ n: string }>(
@@ -180,15 +209,21 @@ describe('Mesa de trabajo de Agenda (e2e real)', () => {
       .get(`/eventos/mesa-trabajo?busqueda=${encodeURIComponent(organizacion)}`)
       .set('Cookie', cookieJefa)
       .expect(200);
-    expect(res.body.datos.find((f: { id: string }) => f.id === eventoId)).toBeDefined();
+    expect(
+      res.body.datos.find((f: { id: string }) => f.id === eventoId),
+    ).toBeDefined();
   });
 
   it('búsqueda: no aparece con un texto que no coincide', async () => {
     const res = await request(app.getHttpServer())
-      .get(`/eventos/mesa-trabajo?busqueda=${encodeURIComponent('texto que no existe ' + rand)}`)
+      .get(
+        `/eventos/mesa-trabajo?busqueda=${encodeURIComponent('texto que no existe ' + rand)}`,
+      )
       .set('Cookie', cookieJefa)
       .expect(200);
-    expect(res.body.datos.find((f: { id: string }) => f.id === eventoId)).toBeUndefined();
+    expect(
+      res.body.datos.find((f: { id: string }) => f.id === eventoId),
+    ).toBeUndefined();
   });
 
   it('filtro sinHorario=true la incluye (todavía sin fecha_inicio)', async () => {
@@ -196,7 +231,9 @@ describe('Mesa de trabajo de Agenda (e2e real)', () => {
       .get('/eventos/mesa-trabajo?sinHorario=true')
       .set('Cookie', cookieJefa)
       .expect(200);
-    expect(res.body.datos.find((f: { id: string }) => f.id === eventoId)).toBeDefined();
+    expect(
+      res.body.datos.find((f: { id: string }) => f.id === eventoId),
+    ).toBeDefined();
   });
 
   // El punto explícito del pedido: ser invitado (evento_responsables) NO
@@ -208,27 +245,30 @@ describe('Mesa de trabajo de Agenda (e2e real)', () => {
       .get(`/eventos/mesa-trabajo?busqueda=${encodeURIComponent(organizacion)}`)
       .set('Cookie', cookieJefa)
       .expect(200);
-    const filaAntes = antes.body.datos.find((f: { id: string }) => f.id === eventoId);
+    const filaAntes = antes.body.datos.find(
+      (f: { id: string }) => f.id === eventoId,
+    );
     expect(filaAntes.responsable_apoyo_id).toBe(apoyo1Id);
     expect(filaAntes.responsable_apoyo_nombre).toBe('Mesa Apoyo Uno');
     expect(filaAntes.participa_gobernador).toBe(false);
 
-    // La jefa invita al Gobernador como participante (evento_responsables) --
-    // no como colaborador. Esto SÍ debe marcar participa_gobernador (ese
-    // campo lee evento_responsables, sea cual sea el camino por el que se
-    // llenó), pero NO debe tocar responsable_apoyo (ese lee
-    // evento_colaboradores, un concepto distinto: trabajo delegado).
+    // La jefa invita al Gobernador y también a apoyo2 como participantes
+    // (evento_responsables), no como colaboradores. El Gobernador SÍ debe
+    // marcar participa_gobernador, pero apoyo2 NO puede reemplazar al apoyo
+    // responsable: ese dato sale de evento_colaboradores, no de invitados.
     await request(app.getHttpServer())
       .put(`/eventos/${eventoId}/responsables`)
       .set('Cookie', cookieJefa)
-      .send({ usuarioIds: [gobernadorId] })
+      .send({ usuarioIds: [gobernadorId, apoyo2Id] })
       .expect(200);
 
     const despues = await request(app.getHttpServer())
       .get(`/eventos/mesa-trabajo?busqueda=${encodeURIComponent(organizacion)}`)
       .set('Cookie', cookieJefa)
       .expect(200);
-    const filaDespues = despues.body.datos.find((f: { id: string }) => f.id === eventoId);
+    const filaDespues = despues.body.datos.find(
+      (f: { id: string }) => f.id === eventoId,
+    );
     expect(filaDespues.participa_gobernador).toBe(true);
     expect(filaDespues.responsable_apoyo_id).toBe(apoyo1Id);
     expect(filaDespues.responsable_apoyo_nombre).toBe('Mesa Apoyo Uno');
@@ -239,13 +279,35 @@ describe('Mesa de trabajo de Agenda (e2e real)', () => {
       .get(`/eventos/mesa-trabajo?responsableApoyoId=${apoyo1Id}`)
       .set('Cookie', cookieJefa)
       .expect(200);
-    expect(conApoyo1.body.datos.find((f: { id: string }) => f.id === eventoId)).toBeDefined();
+    expect(
+      conApoyo1.body.datos.find((f: { id: string }) => f.id === eventoId),
+    ).toBeDefined();
 
     const conApoyo2 = await request(app.getHttpServer())
       .get(`/eventos/mesa-trabajo?responsableApoyoId=${apoyo2Id}`)
       .set('Cookie', cookieJefa)
       .expect(200);
-    expect(conApoyo2.body.datos.find((f: { id: string }) => f.id === eventoId)).toBeUndefined();
+    expect(
+      conApoyo2.body.datos.find((f: { id: string }) => f.id === eventoId),
+    ).toBeUndefined();
+  });
+
+  it('el directorio acotado de responsables incluye a todos los apoyos', async () => {
+    const res = await request(app.getHttpServer())
+      .get('/eventos/mesa-trabajo/responsables')
+      .set('Cookie', cookieJefa)
+      .expect(200);
+    expect(res.body).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: apoyo1Id }),
+        expect.objectContaining({ id: apoyo2Id }),
+      ]),
+    );
+
+    await request(app.getHttpServer())
+      .get('/eventos/mesa-trabajo/responsables')
+      .set('Cookie', cookieApoyo1)
+      .expect(403);
   });
 
   it('filtro participaGobernador=false ya no la incluye (el Gobernador quedó invitado en la prueba anterior)', async () => {
@@ -253,7 +315,9 @@ describe('Mesa de trabajo de Agenda (e2e real)', () => {
       .get('/eventos/mesa-trabajo?participaGobernador=false')
       .set('Cookie', cookieJefa)
       .expect(200);
-    expect(res.body.datos.find((f: { id: string }) => f.id === eventoId)).toBeUndefined();
+    expect(
+      res.body.datos.find((f: { id: string }) => f.id === eventoId),
+    ).toBeUndefined();
   });
 
   it('la jefa confirma con horario: filtro estado=confirmado la incluye, estado=solicitud ya no, sinHorario=true ya no', async () => {
@@ -269,26 +333,66 @@ describe('Mesa de trabajo de Agenda (e2e real)', () => {
       .get('/eventos/mesa-trabajo?estado=confirmado')
       .set('Cookie', cookieJefa)
       .expect(200);
-    expect(confirmado.body.datos.find((f: { id: string }) => f.id === eventoId)).toBeDefined();
+    expect(
+      confirmado.body.datos.find((f: { id: string }) => f.id === eventoId),
+    ).toBeDefined();
 
     const solicitud = await request(app.getHttpServer())
       .get('/eventos/mesa-trabajo?estado=solicitud')
       .set('Cookie', cookieJefa)
       .expect(200);
-    expect(solicitud.body.datos.find((f: { id: string }) => f.id === eventoId)).toBeUndefined();
+    expect(
+      solicitud.body.datos.find((f: { id: string }) => f.id === eventoId),
+    ).toBeUndefined();
 
     const sinHorario = await request(app.getHttpServer())
       .get('/eventos/mesa-trabajo?sinHorario=true')
       .set('Cookie', cookieJefa)
       .expect(200);
-    expect(sinHorario.body.datos.find((f: { id: string }) => f.id === eventoId)).toBeUndefined();
+    expect(
+      sinHorario.body.datos.find((f: { id: string }) => f.id === eventoId),
+    ).toBeUndefined();
+  });
+
+  it('filtro por período: la incluye dentro del rango y la excluye fuera de él', async () => {
+    const actual = await request(app.getHttpServer())
+      .get(`/eventos/${eventoId}`)
+      .set('Cookie', cookieJefa)
+      .expect(200);
+    const inicioMs = Date.parse(actual.body.fecha_inicio);
+    const finMs = Date.parse(actual.body.fecha_fin);
+
+    const dentro = await request(app.getHttpServer())
+      .get(
+        `/eventos/mesa-trabajo?desde=${encodeURIComponent(new Date(inicioMs - 60_000).toISOString())}` +
+          `&hasta=${encodeURIComponent(new Date(finMs + 60_000).toISOString())}`,
+      )
+      .set('Cookie', cookieJefa)
+      .expect(200);
+    expect(
+      dentro.body.datos.find((f: { id: string }) => f.id === eventoId),
+    ).toBeDefined();
+
+    const fuera = await request(app.getHttpServer())
+      .get(
+        `/eventos/mesa-trabajo?desde=${encodeURIComponent(new Date(finMs + 86_400_000).toISOString())}` +
+          `&hasta=${encodeURIComponent(new Date(finMs + 172_800_000).toISOString())}`,
+      )
+      .set('Cookie', cookieJefa)
+      .expect(200);
+    expect(
+      fuera.body.datos.find((f: { id: string }) => f.id === eventoId),
+    ).toBeUndefined();
   });
 
   it('indicación pendiente: el Gobernador pide un cambio, el filtro conIndicacionPendiente=true la muestra con el tipo correcto', async () => {
     const indicacion = await request(app.getHttpServer())
       .post(`/eventos/${eventoId}/indicaciones`)
       .set('Cookie', cookieGobernador)
-      .send({ tipo: 'aclaracion', texto: '¿Quién de la organización va a estar presente?' })
+      .send({
+        tipo: 'aclaracion',
+        texto: '¿Quién de la organización va a estar presente?',
+      })
       .expect(201);
 
     const res = await request(app.getHttpServer())
@@ -304,14 +408,19 @@ describe('Mesa de trabajo de Agenda (e2e real)', () => {
     await request(app.getHttpServer())
       .patch(`/eventos/indicaciones/${indicacion.body.id}`)
       .set('Cookie', cookieJefa)
-      .send({ estado: 'aplicada', resultadoNota: 'Va a estar el ingeniero a cargo.' })
+      .send({
+        estado: 'aplicada',
+        resultadoNota: 'Va a estar el ingeniero a cargo.',
+      })
       .expect(200);
 
     const despues = await request(app.getHttpServer())
       .get('/eventos/mesa-trabajo?conIndicacionPendiente=true')
       .set('Cookie', cookieJefa)
       .expect(200);
-    expect(despues.body.datos.find((f: { id: string }) => f.id === eventoId)).toBeUndefined();
+    expect(
+      despues.body.datos.find((f: { id: string }) => f.id === eventoId),
+    ).toBeUndefined();
   });
 
   // Protección frente a cambios simultáneos (punto 6 del pedido): si otra
@@ -327,9 +436,48 @@ describe('Mesa de trabajo de Agenda (e2e real)', () => {
       const res = await request(app.getHttpServer())
         .patch(`/eventos/${eventoId}`)
         .set('Cookie', cookieJefa)
-        .send({ lugar: 'Sala de auditorías, piso 2', ifUpdatedAt: actual.body.updated_at })
+        .send({
+          lugar: 'Sala de auditorías, piso 2',
+          ifUpdatedAt: actual.body.updated_at,
+        })
         .expect(200);
       expect(res.body.lugar).toBe('Sala de auditorías, piso 2');
+    });
+
+    it('un cambio de colaboradores también vence la versión abierta del evento', async () => {
+      const antes = await request(app.getHttpServer())
+        .get(`/eventos/${eventoId}`)
+        .set('Cookie', cookieJefa)
+        .expect(200);
+
+      await request(app.getHttpServer())
+        .put(`/eventos/${eventoId}/colaboradores`)
+        .set('Cookie', cookieJefa)
+        .send({ usuarioIds: [apoyo1Id, apoyo2Id] })
+        .expect(200);
+
+      const despues = await request(app.getHttpServer())
+        .get(`/eventos/${eventoId}`)
+        .set('Cookie', cookieJefa)
+        .expect(200);
+      expect(despues.body.updated_at).not.toBe(antes.body.updated_at);
+
+      await request(app.getHttpServer())
+        .patch(`/eventos/${eventoId}`)
+        .set('Cookie', cookieJefa)
+        .send({
+          lugar: 'Cambio basado en relaciones obsoletas',
+          ifUpdatedAt: antes.body.updated_at,
+        })
+        .expect(409);
+
+      // Restaura el responsable original para que el resto de la suite no
+      // dependa del orden de los colaboradores agregados en esta prueba.
+      await request(app.getHttpServer())
+        .put(`/eventos/${eventoId}/colaboradores`)
+        .set('Cookie', cookieJefa)
+        .send({ usuarioIds: [apoyo1Id] })
+        .expect(200);
     });
 
     it('PATCH reutilizando ese mismo ifUpdatedAt (ya vencido) choca con 409 y trae el estado real', async () => {
@@ -344,17 +492,24 @@ describe('Mesa de trabajo de Agenda (e2e real)', () => {
       await request(app.getHttpServer())
         .patch(`/eventos/${eventoId}`)
         .set('Cookie', cookieJefa)
-        .send({ lugar: 'Sala de auditorías, piso 3 (cambiada por otra persona)' })
+        .send({
+          lugar: 'Sala de auditorías, piso 3 (cambiada por otra persona)',
+        })
         .expect(200);
 
       const conflicto = await request(app.getHttpServer())
         .patch(`/eventos/${eventoId}`)
         .set('Cookie', cookieJefa)
-        .send({ lugar: 'Un cambio que llega tarde', ifUpdatedAt: updatedAtVencido })
+        .send({
+          lugar: 'Un cambio que llega tarde',
+          ifUpdatedAt: updatedAtVencido,
+        })
         .expect(409);
       expect(conflicto.body.message).toBeDefined();
       expect(conflicto.body.actual.id).toBe(eventoId);
-      expect(conflicto.body.actual.lugar).toBe('Sala de auditorías, piso 3 (cambiada por otra persona)');
+      expect(conflicto.body.actual.lugar).toBe(
+        'Sala de auditorías, piso 3 (cambiada por otra persona)',
+      );
 
       // No se aplicó el cambio que llegó tarde -- el lugar sigue siendo el
       // del guardado anterior, no se sobrescribió en silencio.
@@ -362,13 +517,18 @@ describe('Mesa de trabajo de Agenda (e2e real)', () => {
         .get(`/eventos/${eventoId}`)
         .set('Cookie', cookieJefa)
         .expect(200);
-      expect(sigueIgual.body.lugar).toBe('Sala de auditorías, piso 3 (cambiada por otra persona)');
+      expect(sigueIgual.body.lugar).toBe(
+        'Sala de auditorías, piso 3 (cambiada por otra persona)',
+      );
 
       // El "actual" que vino en el 409 sirve para reintentar con éxito.
       await request(app.getHttpServer())
         .patch(`/eventos/${eventoId}`)
         .set('Cookie', cookieJefa)
-        .send({ lugar: 'Reintentado con la versión correcta', ifUpdatedAt: conflicto.body.actual.updated_at })
+        .send({
+          lugar: 'Reintentado con la versión correcta',
+          ifUpdatedAt: conflicto.body.actual.updated_at,
+        })
         .expect(200);
     });
 
@@ -376,14 +536,18 @@ describe('Mesa de trabajo de Agenda (e2e real)', () => {
       await request(app.getHttpServer())
         .patch(`/eventos/${eventoId}`)
         .set('Cookie', cookieJefa)
-        .send({ descripcion: 'Sin bloqueo optimista, comportamiento previo intacto' })
+        .send({
+          descripcion: 'Sin bloqueo optimista, comportamiento previo intacto',
+        })
         .expect(200);
     });
   });
 
   it('paginación: total/pagina/paginas coherentes con porPagina=1', async () => {
     const res = await request(app.getHttpServer())
-      .get(`/eventos/mesa-trabajo?busqueda=${encodeURIComponent(organizacion)}&porPagina=1&pagina=1`)
+      .get(
+        `/eventos/mesa-trabajo?busqueda=${encodeURIComponent(organizacion)}&porPagina=1&pagina=1`,
+      )
       .set('Cookie', cookieJefa)
       .expect(200);
     expect(res.body.datos.length).toBeLessThanOrEqual(1);
