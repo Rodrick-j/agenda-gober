@@ -20,7 +20,8 @@ import { rangoDeRol } from "@/lib/roles";
 import { InstitutionalIcon } from "@/components/InstitutionalIcon";
 import { Panel, PanelTitle } from "@/components/InstitutionalPanel";
 
-function fechaCorta(fecha: string) {
+function fechaCorta(fecha: string | null) {
+  if (!fecha) return "Sin horario definido";
   return new Date(fecha).toLocaleDateString("es-BO", { day: "numeric", month: "short", year: "numeric" });
 }
 
