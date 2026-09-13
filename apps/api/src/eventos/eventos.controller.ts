@@ -40,6 +40,11 @@ export class EventosController {
     return this.service.mesaTrabajo(filtro);
   }
 
+  @Get('mesa-trabajo/responsables')
+  responsablesMesaTrabajo() {
+    return this.service.responsablesMesaTrabajo();
+  }
+
   @Get(':id')
   obtener(@Param('id') id: string) {
     return this.service.obtener(id);

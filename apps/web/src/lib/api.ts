@@ -540,7 +540,10 @@ export interface Participante {
   email: string;
 }
 
-export interface EventoDetalle extends Omit<Evento, "fecha_inicio" | "fecha_fin"> {
+export interface EventoDetalle extends Omit<
+  Evento,
+  "fecha_inicio" | "fecha_fin"
+> {
   // Acá sí puede venir en null: una 'solicitud' todavía sin horario,
   // llegada por ejemplo desde el enlace de la bandeja de pendientes.
   fecha_inicio: string | null;
@@ -571,7 +574,10 @@ export interface Indicacion {
   atendida_por_nombre: string | null;
 }
 
-export function crearIndicacion(eventoId: string, data: { tipo: IndicacionTipo; texto: string }) {
+export function crearIndicacion(
+  eventoId: string,
+  data: { tipo: IndicacionTipo; texto: string },
+) {
   return request<Indicacion>(`/eventos/${eventoId}/indicaciones`, {
     method: "POST",
     body: JSON.stringify(data),
@@ -655,16 +661,26 @@ export function getMesaTrabajo(filtro: MesaTrabajoFiltro = {}) {
   if (filtro.hasta) params.set("hasta", filtro.hasta);
   if (filtro.busqueda) params.set("busqueda", filtro.busqueda);
   if (filtro.estado?.length) params.set("estado", filtro.estado.join(","));
-  if (filtro.responsableApoyoId) params.set("responsableApoyoId", filtro.responsableApoyoId);
+  if (filtro.responsableApoyoId)
+    params.set("responsableApoyoId", filtro.responsableApoyoId);
   if (filtro.participaGobernador !== undefined)
     params.set("participaGobernador", String(filtro.participaGobernador));
-  if (filtro.sinHorario !== undefined) params.set("sinHorario", String(filtro.sinHorario));
+  if (filtro.sinHorario !== undefined)
+    params.set("sinHorario", String(filtro.sinHorario));
   if (filtro.conIndicacionPendiente !== undefined)
     params.set("conIndicacionPendiente", String(filtro.conIndicacionPendiente));
   if (filtro.pagina) params.set("pagina", String(filtro.pagina));
   if (filtro.porPagina) params.set("porPagina", String(filtro.porPagina));
   const qs = params.toString();
-  return request<Paginado<MesaTrabajoFila>>(`/eventos/mesa-trabajo${qs ? `?${qs}` : ""}`);
+  return request<Paginado<MesaTrabajoFila>>(
+    `/eventos/mesa-trabajo${qs ? `?${qs}` : ""}`,
+  );
+}
+
+export function getResponsablesMesaTrabajo() {
+  return request<Array<{ id: string; nombre: string }>>(
+    "/eventos/mesa-trabajo/responsables",
+  );
 }
 
 // oculto=true: cruza con algo ya agendado del Gobernador que quien pregunta
@@ -707,7 +723,10 @@ export function eliminarEvento(id: string) {
 // Colaboración (evento_colaboradores, 029) es trabajo delegado, distinto de
 // ser invitado (responsables) -- normalmente lo asigna quien puede editar el
 // evento (la jefa). `apoyo` ya queda auto-asignado a lo que crea (backend).
-export function reemplazarColaboradoresEvento(id: string, usuarioIds: string[]) {
+export function reemplazarColaboradoresEvento(
+  id: string,
+  usuarioIds: string[],
+) {
   return request<{ actualizado: boolean }>(`/eventos/${id}/colaboradores`, {
     method: "PUT",
     body: JSON.stringify({ usuarioIds }),

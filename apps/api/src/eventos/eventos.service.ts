@@ -55,11 +55,7 @@ export class EventosService {
   // explícitamente (evento_responsables), igual criterio que usa la
   // confirmación del recorrido de solicitudes (029) para agregar al
   // Gobernador.
-  async listar(
-    desde?: string,
-    hasta?: string,
-    soloMiParticipacion = false,
-  ) {
+  async listar(desde?: string, hasta?: string, soloMiParticipacion = false) {
     const { userId } = this.tx.currentUser;
     const { rows } = await this.tx.query(
       `SELECT ${SELECT_FIELDS} FROM eventos_agenda
@@ -163,6 +159,31 @@ export class EventosService {
       ],
     );
     return paginar(rows, lim);
+  }
+
+  // Directorio acotado para el filtro de la mesa. Usa EXISTS en vez de
+  // escoger un unico rol: si una persona tiene mas de uno, sigue apareciendo
+  // siempre que conserve el rol apoyo. No amplia el contrato compartido de
+  // /secretarias/miembros ni expone emails innecesarios.
+  async responsablesMesaTrabajo() {
+    const { rol } = this.tx.currentUser;
+    if (!['jefe_gabinete', 'admin'].includes(rol)) {
+      throw new ForbiddenException('Solo coordinacion de agenda');
+    }
+
+    const { rows } = await this.tx.query(
+      `SELECT u.id, u.nombre
+       FROM usuarios u
+       WHERE u.activo = true
+         AND EXISTS (
+           SELECT 1
+           FROM usuario_roles ur
+           JOIN roles r ON r.id = ur.rol_id
+           WHERE ur.usuario_id = u.id AND r.nombre = 'apoyo'
+         )
+       ORDER BY u.nombre`,
+    );
+    return rows;
   }
 
   async obtener(id: string) {
@@ -383,10 +404,9 @@ export class EventosService {
     const { rows: actualRows } = await this.tx.query<{
       fecha_inicio: string | null;
       fecha_fin: string | null;
-    }>(
-      `SELECT fecha_inicio, fecha_fin FROM eventos_agenda WHERE id = $1`,
-      [id],
-    );
+    }>(`SELECT fecha_inicio, fecha_fin FROM eventos_agenda WHERE id = $1`, [
+      id,
+    ]);
     if (actualRows.length === 0)
       throw new NotFoundException('Evento no encontrado');
     const actual = actualRows[0];
@@ -398,9 +418,7 @@ export class EventosService {
       // sola fecha puesta. Esto pasa, en la práctica, al proponer/confirmar
       // horario de una 'solicitud' que hasta ahora tenía ambas en null.
       if ((inicioFinal === null) !== (finFinal === null)) {
-        throw new BadRequestException(
-          'Indica fecha de inicio y fin juntas',
-        );
+        throw new BadRequestException('Indica fecha de inicio y fin juntas');
       }
       if (
         inicioFinal !== null &&
