@@ -27,9 +27,15 @@ export interface Publicacion {
 
 export class ApiError extends Error {
   status: number;
-  constructor(message: string, status: number) {
+  // Body completo de la respuesta de error -- necesario para el 409 de
+  // bloqueo optimista (034_agenda_mesa_trabajo.sql), que manda
+  // {message, actual: EventoDetalle} y el caller necesita `actual`, no
+  // solo el mensaje.
+  body?: unknown;
+  constructor(message: string, status: number, body?: unknown) {
     super(message);
     this.status = status;
+    this.body = body;
   }
 }
 
@@ -107,6 +113,7 @@ async function request<T>(
     throw new ApiError(
       message ?? res.statusText ?? "Error inesperado",
       res.status,
+      body,
     );
   }
 
@@ -491,6 +498,9 @@ export interface Evento {
   titulo: string;
   descripcion: string | null;
   lugar: string | null;
+  // Texto libre, provisional (034_agenda_mesa_trabajo.sql) -- no hay
+  // todavía un directorio de organizaciones/contactos.
+  organizacion_solicitante: string | null;
   fecha_inicio: string;
   fecha_fin: string;
   nivel_confidencialidad: NivelConfidencialidad;
@@ -506,6 +516,7 @@ export interface CrearEventoInput {
   titulo: string;
   descripcion?: string;
   lugar?: string;
+  organizacionSolicitante?: string;
   // Opcionales: una "solicitud" de apoyo puede registrarse sin horario
   // todavía (029_agenda_solicitudes.sql). Cualquier otro estado los exige --
   // lo valida el backend/la base, no este tipo.
@@ -514,6 +525,10 @@ export interface CrearEventoInput {
   nivelConfidencialidad: NivelConfidencialidad;
   recordatoriosActivos?: boolean;
   estado?: EventoEstado;
+  // Bloqueo optimista (solo tiene sentido al editar, pero vive acá para que
+  // actualizarEvento -- que usa Partial<CrearEventoInput> -- lo herede sin
+  // un tipo aparte). Ver ApiError.body para leer el 409.
+  ifUpdatedAt?: string;
   // Explícito, nunca inferido de confirmar -- ver eventos.service.ts,
   // marcarParticipacionGobernador().
   participaGobernador?: boolean;
@@ -599,6 +614,57 @@ export function crearEvento(data: CrearEventoInput) {
     method: "POST",
     body: JSON.stringify(data),
   });
+}
+
+// ---- Mesa de trabajo (vista de tabla, 034_agenda_mesa_trabajo.sql) ----
+
+export interface MesaTrabajoFila {
+  id: string;
+  titulo: string;
+  organizacion_solicitante: string | null;
+  lugar: string | null;
+  estado: EventoEstado;
+  fecha_inicio: string | null;
+  fecha_fin: string | null;
+  secretaria_id: string | null;
+  updated_at: string;
+  // Sale de evento_colaboradores (trabajo delegado), nunca de ser invitado.
+  responsable_apoyo_id: string | null;
+  responsable_apoyo_nombre: string | null;
+  participa_gobernador: boolean;
+  indicacion_pendiente_id: string | null;
+  indicacion_pendiente_tipo: IndicacionTipo | null;
+}
+
+export interface MesaTrabajoFiltro {
+  desde?: string;
+  hasta?: string;
+  busqueda?: string;
+  estado?: EventoEstado[];
+  responsableApoyoId?: string;
+  participaGobernador?: boolean;
+  sinHorario?: boolean;
+  conIndicacionPendiente?: boolean;
+  pagina?: number;
+  porPagina?: number;
+}
+
+export function getMesaTrabajo(filtro: MesaTrabajoFiltro = {}) {
+  const params = new URLSearchParams();
+  if (filtro.desde) params.set("desde", filtro.desde);
+  if (filtro.hasta) params.set("hasta", filtro.hasta);
+  if (filtro.busqueda) params.set("busqueda", filtro.busqueda);
+  if (filtro.estado?.length) params.set("estado", filtro.estado.join(","));
+  if (filtro.responsableApoyoId) params.set("responsableApoyoId", filtro.responsableApoyoId);
+  if (filtro.participaGobernador !== undefined)
+    params.set("participaGobernador", String(filtro.participaGobernador));
+  if (filtro.sinHorario !== undefined) params.set("sinHorario", String(filtro.sinHorario));
+  if (filtro.conIndicacionPendiente !== undefined)
+    params.set("conIndicacionPendiente", String(filtro.conIndicacionPendiente));
+  if (filtro.pagina) params.set("pagina", String(filtro.pagina));
+  if (filtro.porPagina) params.set("porPagina", String(filtro.porPagina));
+  const qs = params.toString();
+  return request<Paginado<MesaTrabajoFila>>(`/eventos/mesa-trabajo${qs ? `?${qs}` : ""}`);
 }
 
 // oculto=true: cruza con algo ya agendado del Gobernador que quien pregunta

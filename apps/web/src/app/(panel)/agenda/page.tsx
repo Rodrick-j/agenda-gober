@@ -9,6 +9,7 @@ import {
   type FormEvent,
 } from "react";
 import {
+  ApiError,
   actualizarEvento,
   atenderIndicacion,
   buscarConflictosEvento,
@@ -40,6 +41,7 @@ import {
   type IconName,
 } from "@/components/InstitutionalIcon";
 import { Panel, PanelTitle } from "@/components/InstitutionalPanel";
+import { MesaTrabajoAgenda } from "@/components/MesaTrabajoAgenda";
 
 const DIAS = ["Lu", "Ma", "Mi", "Ju", "Vi", "Sá", "Do"];
 const MESES = [
@@ -214,6 +216,10 @@ export default function AgendaPage() {
   // escribe eventos_agenda directo, ver 033).
   const puedeMarcarParticipacion = ["jefe_gabinete", "admin"].includes(sesion.rol);
   const esGobernador = sesion.rol === "gobernador";
+  // Mesa de trabajo (034_agenda_mesa_trabajo.sql): mismos registros, vista
+  // de tabla -- "conservando el calendario existente". Quien no coordina la
+  // agenda (puedeMarcarParticipacion=false) ni siquiera ve el selector.
+  const [vista, setVista] = useState<"calendario" | "tabla">("calendario");
 
   const [calendar, setCalendar] = useState(() => {
     const n = new Date();
@@ -231,6 +237,18 @@ export default function AgendaPage() {
   const [titulo, setTitulo] = useState("");
   const [descripcion, setDescripcion] = useState("");
   const [lugar, setLugar] = useState("");
+  const [organizacionSolicitante, setOrganizacionSolicitante] = useState("");
+  // Bloqueo optimista: la respuesta 409 trae el registro tal como está en
+  // el servidor -- se guarda para poder ofrecer "cargar lo más reciente"
+  // en vez de perder en silencio lo que la otra persona guardó.
+  const [conflictoActual, setConflictoActual] = useState<EventoDetalle | null>(null);
+  // Aviso (no bloqueante) de que el registro abierto cambió en el servidor
+  // mientras se estaba editando -- distinto de conflictoActual (que llega
+  // recién al intentar guardar): este se muestra apenas llega el cambio en
+  // tiempo real, antes de que la jefa toque "Guardar".
+  const [hayAvisoRemoto, setHayAvisoRemoto] = useState(false);
+  const mostrarFormRef = useRef(false);
+  const editandoIdRef = useRef<string | null>(null);
   const [horaInicio, setHoraInicio] = useState("09:00");
   const [horaFin, setHoraFin] = useState("10:00");
   const [duracion, setDuracion] = useState(60);
@@ -305,6 +323,20 @@ export default function AgendaPage() {
 
   // Tiempo real: mismo canal RLS-filtrado que el resto del panel. En un
   // borrado no llega la fila (ya no existe) -- solo el id, para sacarla.
+  //
+  // "Una actualización no debe borrar un formulario que la jefa esté
+  // editando" -- por eso este handler NUNCA toca titulo/lugar/etc.
+  // directamente: solo actualiza la lista de fondo. Si el evento que
+  // cambió es justo el que está abierto en el diálogo, se muestra un
+  // aviso no destructivo (ver el banner de conflictoActual/hayAvisoRemoto
+  // más abajo) en vez de pisar lo que se esté escribiendo. Refs porque
+  // este efecto se suscribe una sola vez -- mostrarForm/editando en un
+  // closure viejo estarían siempre desactualizados si no fuera por esto.
+  useEffect(() => {
+    mostrarFormRef.current = mostrarForm;
+    editandoIdRef.current = editando?.id ?? null;
+  }, [mostrarForm, editando]);
+
   useEffect(
     () =>
       onEventoCambio(({ evento, id }) => {
@@ -316,6 +348,14 @@ export default function AgendaPage() {
           copy[idx] = evento;
           return copy;
         });
+        const cambiadoId = evento?.id ?? id;
+        if (
+          mostrarFormRef.current &&
+          cambiadoId &&
+          cambiadoId === editandoIdRef.current
+        ) {
+          setHayAvisoRemoto(true);
+        }
       }),
     [onEventoCambio],
   );
@@ -350,10 +390,13 @@ export default function AgendaPage() {
 
   function abrirNuevo() {
     setError(null);
+    setConflictoActual(null);
+    setHayAvisoRemoto(false);
     setEditando(null);
     setTitulo("");
     setDescripcion("");
     setLugar("");
+    setOrganizacionSolicitante("");
     setHoraInicio("09:00");
     setHoraFin("10:00");
     setDuracion(60);
@@ -380,10 +423,13 @@ export default function AgendaPage() {
   // bandeja de pendientes).
   function abrirEditar(ev: Evento | EventoDetalle) {
     setError(null);
+    setConflictoActual(null);
+    setHayAvisoRemoto(false);
     setEditando(ev as Evento);
     setTitulo(ev.titulo);
     setDescripcion(ev.descripcion ?? "");
     setLugar(ev.lugar ?? "");
+    setOrganizacionSolicitante(ev.organizacion_solicitante ?? "");
     const tieneHorario = ev.fecha_inicio !== null && ev.fecha_fin !== null;
     setHoraInicio(
       tieneHorario ? new Date(ev.fecha_inicio!).toTimeString().slice(0, 5) : "09:00",
@@ -437,6 +483,23 @@ export default function AgendaPage() {
     })();
   }
 
+  // Abre el mismo diálogo de editar a partir de solo un id -- lo usan el
+  // enlace ?evento=<id> (bandeja de pendientes) y cada fila de la mesa de
+  // trabajo (que no carga el Evento completo, solo lo que muestra la
+  // tabla). Reutiliza abrirEditar tal cual: misma validación, mismas
+  // acciones controladas (confirmar/cancelar/reprogramar), mismo panel de
+  // indicaciones.
+  async function abrirEditarPorId(id: string) {
+    try {
+      const detalle = await getEvento(id);
+      abrirEditar(detalle);
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : "No se pudo abrir el evento",
+      );
+    }
+  }
+
   // Enlace desde la bandeja de pendientes (?evento=<id>): trae el evento
   // puntual por id (RLS propia, no depende de que esté en el rango del mes
   // que el calendario tenga cargado) y abre el mismo formulario de editar.
@@ -447,18 +510,7 @@ export default function AgendaPage() {
     const eventoId = new URLSearchParams(window.location.search).get("evento");
     if (!eventoId || enlaceProcesado.current === eventoId) return;
     enlaceProcesado.current = eventoId;
-    (async () => {
-      try {
-        const detalle = await getEvento(eventoId);
-        abrirEditar(detalle);
-      } catch (err) {
-        setError(
-          err instanceof Error
-            ? err.message
-            : "No se pudo abrir el evento enlazado",
-        );
-      }
-    })();
+    void abrirEditarPorId(eventoId);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -505,6 +557,7 @@ export default function AgendaPage() {
         titulo,
         descripcion: descripcion || undefined,
         lugar: lugar || undefined,
+        organizacionSolicitante: organizacionSolicitante || undefined,
         fechaInicio: fechaInicioIso,
         fechaFin: fechaFinIso,
         nivelConfidencialidad: nivel,
@@ -513,6 +566,11 @@ export default function AgendaPage() {
         // Solo quien puede marcarla (la jefa/admin) la manda -- nunca
         // inferida de a qué estado se mueve el evento.
         participaGobernador: puedeMarcarParticipacion ? participaGobernador : undefined,
+        // Bloqueo optimista ("protección frente a cambios simultáneos",
+        // 034_agenda_mesa_trabajo.sql): el updated_at que vimos al abrir
+        // este registro. Si cambió mientras lo teníamos abierto, el
+        // backend responde 409 en vez de sobrescribir -- ver el catch.
+        ifUpdatedAt: editando?.updated_at,
       };
 
       const eventoGuardado = editando
@@ -537,6 +595,16 @@ export default function AgendaPage() {
       setMostrarForm(false);
       await cargar();
     } catch (err) {
+      // 409: alguien más guardó un cambio mientras este formulario estaba
+      // abierto. No se sobrescribe en silencio -- se muestra el estado
+      // real del servidor y se deja que la jefa decida (recargar y repetir
+      // su cambio, o cerrar). El diálogo se queda abierto a propósito.
+      if (err instanceof ApiError && err.status === 409) {
+        const actual = (err.body as { actual?: EventoDetalle } | undefined)?.actual;
+        if (actual) setConflictoActual(actual);
+        setError(err.message);
+        return;
+      }
       setError(
         err instanceof Error ? err.message : "No se pudo guardar el evento",
       );
@@ -664,7 +732,7 @@ export default function AgendaPage() {
             Agenda institucional
           </div>
           <h1 className="text-xl font-black tracking-tight text-[#102a4c] sm:text-2xl">
-            Calendario de actividades
+            {vista === "calendario" ? "Calendario de actividades" : "Mesa de trabajo"}
           </h1>
           <p className="mt-1 text-xs text-slate-500">
             Reuniones y actividades ·{" "}
@@ -673,10 +741,41 @@ export default function AgendaPage() {
             </span>
           </p>
         </div>
+        <div className="flex items-center gap-2">
+          {/* Mesa de trabajo (034_agenda_mesa_trabajo.sql): mismos registros
+              del calendario, vista de tabla para uso rápido de la Jefa --
+              acotado a quien coordina la agenda (jefe_gabinete/admin),
+              mismo criterio que participaGobernador/indicaciones. */}
+          {puedeMarcarParticipacion && (
+            <div className="flex rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+              <button
+                type="button"
+                onClick={() => setVista("calendario")}
+                className={`rounded-lg px-3 py-1.5 text-[10px] font-extrabold transition ${
+                  vista === "calendario"
+                    ? "bg-[#0A70D6] text-white"
+                    : "text-slate-500 hover:bg-slate-50"
+                }`}
+              >
+                Calendario
+              </button>
+              <button
+                type="button"
+                onClick={() => setVista("tabla")}
+                className={`rounded-lg px-3 py-1.5 text-[10px] font-extrabold transition ${
+                  vista === "tabla"
+                    ? "bg-[#0A70D6] text-white"
+                    : "text-slate-500 hover:bg-slate-50"
+                }`}
+              >
+                Tabla
+              </button>
+            </div>
+          )}
         {/* gobernador ya no puede crear eventos directo (033) -- sin este
             botón acá, en el calendario normal; su acción es una indicación
             desde "Mi jornada". */}
-        {!esGobernador && (
+        {!esGobernador && vista === "calendario" && (
           <button
             onClick={abrirNuevo}
             aria-haspopup="dialog"
@@ -696,6 +795,7 @@ export default function AgendaPage() {
             </span>
           </button>
         )}
+        </div>
       </div>
 
       {error && !mostrarForm && (
@@ -708,6 +808,9 @@ export default function AgendaPage() {
         </div>
       )}
 
+      {vista === "tabla" ? (
+        <MesaTrabajoAgenda onAbrirEvento={(id) => void abrirEditarPorId(id)} />
+      ) : (
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(300px,1fr)]">
         <Panel className="border-slate-300 bg-white shadow-[0_14px_40px_rgba(15,42,76,.09)]">
           <div className="relative overflow-hidden border-b border-blue-100 bg-gradient-to-r from-[#eef6ff] via-white to-[#f3f8fd] px-4 py-3">
@@ -1008,6 +1111,7 @@ export default function AgendaPage() {
           </div>
         </Panel>
       </div>
+      )}
 
       {mostrarForm && (
         <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6">
@@ -1082,6 +1186,64 @@ export default function AgendaPage() {
                     className="h-4 w-4 shrink-0"
                   />
                   {error}
+                </div>
+              )}
+
+              {hayAvisoRemoto && !conflictoActual && (
+                <div
+                  role="status"
+                  className="mb-4 flex items-center justify-between gap-3 rounded-xl border border-sky-200 bg-sky-50 px-3.5 py-3 text-xs font-semibold text-sky-800"
+                >
+                  <span className="flex items-center gap-2.5">
+                    <InstitutionalIcon name="clock" className="h-4 w-4 shrink-0" />
+                    Este registro se actualizó en el servidor mientras lo editabas.
+                  </span>
+                  <div className="flex shrink-0 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => editando && void abrirEditarPorId(editando.id)}
+                      className="rounded-lg border border-sky-400 bg-white px-2.5 py-1 text-[10px] font-extrabold text-sky-800 hover:bg-sky-100"
+                    >
+                      Ver cambios
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setHayAvisoRemoto(false)}
+                      className="rounded-lg px-2.5 py-1 text-[10px] font-bold text-sky-600 hover:text-sky-800"
+                    >
+                      Seguir editando
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {conflictoActual && (
+                <div
+                  role="alert"
+                  className="mb-4 rounded-2xl border border-orange-300 bg-orange-50 p-4 text-orange-950 shadow-sm"
+                >
+                  <div className="flex items-start gap-3">
+                    <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-orange-500 text-white">
+                      <InstitutionalIcon name="shield" className="h-4 w-4" />
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-black">Este registro cambió mientras lo tenías abierto</p>
+                      <p className="mt-0.5 text-[10px] font-medium text-orange-800">
+                        Estado actual en el servidor: {ESTADO_LABEL[conflictoActual.estado]}
+                        {conflictoActual.fecha_inicio
+                          ? ` · ${horaEvento(conflictoActual.fecha_inicio)}–${horaEvento(conflictoActual.fecha_fin!)}`
+                          : ""}
+                        {conflictoActual.lugar ? ` · ${conflictoActual.lugar}` : ""}
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => abrirEditar(conflictoActual)}
+                        className="mt-3 rounded-lg border border-orange-400 bg-white px-3 py-1.5 text-[10px] font-extrabold text-orange-800 hover:bg-orange-100"
+                      >
+                        Cargar la versión más reciente
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
 
@@ -1605,7 +1767,7 @@ export default function AgendaPage() {
 
                 <label
                   htmlFor="evento-lugar"
-                  className="block text-xs font-extrabold text-[#02224F] sm:col-span-2"
+                  className="block text-xs font-extrabold text-[#02224F]"
                 >
                   Lugar
                   <input
@@ -1614,6 +1776,21 @@ export default function AgendaPage() {
                     value={lugar}
                     onChange={(e) => setLugar(e.target.value)}
                     placeholder="Ej. Sala de gabinete, edificio central"
+                    className={fieldClass}
+                  />
+                </label>
+
+                <label
+                  htmlFor="evento-organizacion"
+                  className="block text-xs font-extrabold text-[#02224F]"
+                >
+                  Organización solicitante
+                  <input
+                    id="evento-organizacion"
+                    name="organizacionSolicitante"
+                    value={organizacionSolicitante}
+                    onChange={(e) => setOrganizacionSolicitante(e.target.value)}
+                    placeholder="Ej. Gremio de transportistas"
                     className={fieldClass}
                   />
                 </label>
