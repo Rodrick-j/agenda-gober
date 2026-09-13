@@ -1,11 +1,19 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Fragment,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ApiError,
   actualizarEvento,
   crearEvento,
   getMesaTrabajo,
+  getResponsablesMesaTrabajo,
   type EventoEstado,
   type MesaTrabajoFila,
   type MesaTrabajoFiltro,
@@ -52,9 +60,18 @@ function fechaHora(fila: MesaTrabajoFila): string {
   });
 }
 
+function limiteLocalIso(fecha: string, finDelDia = false): string | undefined {
+  if (!fecha) return undefined;
+  const hora = finDelDia ? "23:59:59.999" : "00:00:00.000";
+  return new Date(`${fecha}T${hora}`).toISOString();
+}
+
 interface CampoEdicion {
   filaId: string;
   campo: "titulo" | "lugar" | "organizacion_solicitante";
+  // Versión que la persona vio AL empezar a escribir. No se reemplaza por
+  // la que llegue por tiempo real mientras el borrador sigue abierto.
+  ifUpdatedAt: string;
 }
 
 interface Props {
@@ -80,9 +97,14 @@ export function MesaTrabajoAgenda({ onAbrirEvento }: Props) {
 
   const [busqueda, setBusqueda] = useState("");
   const [busquedaDebounced, setBusquedaDebounced] = useState("");
-  const [estadosFiltro, setEstadosFiltro] = useState<Set<EventoEstado>>(new Set());
+  const [desde, setDesde] = useState("");
+  const [hasta, setHasta] = useState("");
+  const [estadosFiltro, setEstadosFiltro] = useState<Set<EventoEstado>>(
+    new Set(),
+  );
   const [soloSinHorario, setSoloSinHorario] = useState(false);
-  const [soloIndicacionesPendientes, setSoloIndicacionesPendientes] = useState(false);
+  const [soloIndicacionesPendientes, setSoloIndicacionesPendientes] =
+    useState(false);
   const [participaGobernadorFiltro, setParticipaGobernadorFiltro] = useState<
     "todos" | "si" | "no"
   >("todos");
@@ -107,15 +129,39 @@ export function MesaTrabajoAgenda({ onAbrirEvento }: Props) {
   const [valorEdicion, setValorEdicion] = useState("");
   const [guardandoCelda, setGuardandoCelda] = useState(false);
   const [erroresCelda, setErroresCelda] = useState<Record<string, string>>({});
+  const [actualizacionPendiente, setActualizacionPendiente] = useState(false);
 
   const contenedorRef = useRef<HTMLDivElement>(null);
   const scrollPreservado = useRef(0);
+  // Si cambian filtros/página con una petición anterior todavía en vuelo,
+  // solo la respuesta más reciente puede reemplazar la tabla.
+  const cargaIdRef = useRef(0);
   // Guarda contra el doble envío: al deshabilitar el input (guardando=true)
   // el navegador le quita el foco automáticamente, lo que dispara onBlur
   // ADEMÁS del onKeyDown de Enter que ya inició el guardado -- sin esto,
   // la segunda llamada manda el mismo ifUpdatedAt ya vencido y choca (409)
   // contra su propio primer guardado.
   const guardandoCeldaRef = useRef(false);
+  const edicionRef = useRef<CampoEdicion | null>(null);
+
+  // El selector debe ofrecer a todo el equipo de apoyo, no solo a quienes
+  // casualmente aparecieron en las 20 filas de la página actual.
+  useEffect(() => {
+    let vigente = true;
+    void getResponsablesMesaTrabajo()
+      .then((miembros) => {
+        if (!vigente) return;
+        setResponsablesConocidos((prev) => {
+          const copia = new Map(prev);
+          for (const miembro of miembros) copia.set(miembro.id, miembro.nombre);
+          return copia;
+        });
+      })
+      .catch(() => undefined);
+    return () => {
+      vigente = false;
+    };
+  }, []);
 
   // Búsqueda con debounce -- evita un fetch por cada tecla.
   useEffect(() => {
@@ -124,10 +170,20 @@ export function MesaTrabajoAgenda({ onAbrirEvento }: Props) {
   }, [busqueda]);
 
   const cargar = useCallback(async () => {
+    const cargaId = ++cargaIdRef.current;
+    if (desde && hasta && desde > hasta) {
+      setError(
+        "La fecha inicial del período no puede ser posterior a la final.",
+      );
+      setCargando(false);
+      return;
+    }
     setCargando(true);
     setError(null);
     try {
       const filtro: MesaTrabajoFiltro = {
+        desde: limiteLocalIso(desde),
+        hasta: limiteLocalIso(hasta, true),
         busqueda: busquedaDebounced || undefined,
         estado: estadosFiltro.size > 0 ? [...estadosFiltro] : undefined,
         sinHorario: soloSinHorario ? true : undefined,
@@ -141,6 +197,7 @@ export function MesaTrabajoAgenda({ onAbrirEvento }: Props) {
         porPagina: 20,
       };
       const res = await getMesaTrabajo(filtro);
+      if (cargaId !== cargaIdRef.current) return;
       setFilas(res.datos);
       setTotal(res.total);
       setPaginas(res.paginas);
@@ -154,11 +211,18 @@ export function MesaTrabajoAgenda({ onAbrirEvento }: Props) {
         return copia;
       });
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error cargando la mesa de trabajo");
+      if (cargaId !== cargaIdRef.current) return;
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Error cargando la mesa de trabajo",
+      );
     } finally {
-      setCargando(false);
+      if (cargaId === cargaIdRef.current) setCargando(false);
     }
   }, [
+    desde,
+    hasta,
     busquedaDebounced,
     estadosFiltro,
     soloSinHorario,
@@ -176,8 +240,9 @@ export function MesaTrabajoAgenda({ onAbrirEvento }: Props) {
   // página vacía si el filtro nuevo trae menos resultados).
   useEffect(() => {
     setPagina(1);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
+    desde,
+    hasta,
     busquedaDebounced,
     estadosFiltro,
     soloSinHorario,
@@ -194,6 +259,14 @@ export function MesaTrabajoAgenda({ onAbrirEvento }: Props) {
   useEffect(
     () =>
       onEventoCambio(() => {
+        if (edicionRef.current) {
+          // No reemplazar la pagina mientras hay un borrador inline: puede
+          // dejar de coincidir con el filtro y desaparecer. El token
+          // ifUpdatedAt congelado al abrir la celda resolvera el conflicto
+          // cuando se intente guardar.
+          setActualizacionPendiente(true);
+          return;
+        }
         scrollPreservado.current = contenedorRef.current?.scrollTop ?? 0;
         void cargar().then(() => {
           requestAnimationFrame(() => {
@@ -217,6 +290,8 @@ export function MesaTrabajoAgenda({ onAbrirEvento }: Props) {
 
   function limpiarFiltros() {
     setBusqueda("");
+    setDesde("");
+    setHasta("");
     setEstadosFiltro(new Set());
     setSoloSinHorario(false);
     setSoloIndicacionesPendientes(false);
@@ -226,6 +301,8 @@ export function MesaTrabajoAgenda({ onAbrirEvento }: Props) {
 
   const hayFiltrosActivos =
     busqueda !== "" ||
+    desde !== "" ||
+    hasta !== "" ||
     estadosFiltro.size > 0 ||
     soloSinHorario ||
     soloIndicacionesPendientes ||
@@ -251,14 +328,24 @@ export function MesaTrabajoAgenda({ onAbrirEvento }: Props) {
       setMostrarAlta(false);
       await cargar();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "No se pudo registrar la solicitud");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo registrar la solicitud",
+      );
     } finally {
       setCreando(false);
     }
   }
 
-  function abrirEdicionCelda(fila: MesaTrabajoFila, campo: CampoEdicion["campo"]) {
-    setEdicion({ filaId: fila.id, campo });
+  function abrirEdicionCelda(
+    fila: MesaTrabajoFila,
+    campo: CampoEdicion["campo"],
+  ) {
+    const siguiente = { filaId: fila.id, campo, ifUpdatedAt: fila.updated_at };
+    edicionRef.current = siguiente;
+    setEdicion(siguiente);
+    setActualizacionPendiente(false);
     setValorEdicion(
       campo === "titulo"
         ? fila.titulo
@@ -281,7 +368,7 @@ export function MesaTrabajoAgenda({ onAbrirEvento }: Props) {
           : campo === "lugar"
             ? "lugar"
             : "organizacionSolicitante"]: valorEdicion,
-        ifUpdatedAt: fila.updated_at,
+        ifUpdatedAt: edicion.ifUpdatedAt,
       } as Parameters<typeof actualizarEvento>[1]);
       setFilas((prev) =>
         prev.map((f) =>
@@ -296,15 +383,18 @@ export function MesaTrabajoAgenda({ onAbrirEvento }: Props) {
             : f,
         ),
       );
+      edicionRef.current = null;
       setEdicion(null);
+      setActualizacionPendiente(false);
+      await cargar();
     } catch (err) {
       if (err instanceof ApiError && err.status === 409) {
         setErroresCelda((prev) => ({
           ...prev,
           [fila.id]:
-            "Esto cambió en el servidor mientras lo editabas -- recarga la fila antes de reintentar.",
+            "Otra persona actualizó este registro. Tu texto sigue aquí: pulsa Escape y vuelve a abrir la celda antes de reintentar.",
         }));
-        void cargar();
+        setActualizacionPendiente(true);
       } else {
         setErroresCelda((prev) => ({
           ...prev,
@@ -314,6 +404,15 @@ export function MesaTrabajoAgenda({ onAbrirEvento }: Props) {
     } finally {
       guardandoCeldaRef.current = false;
       setGuardandoCelda(false);
+    }
+  }
+
+  function cancelarEdicionCelda() {
+    edicionRef.current = null;
+    setEdicion(null);
+    if (actualizacionPendiente) {
+      setActualizacionPendiente(false);
+      void cargar();
     }
   }
 
@@ -373,12 +472,42 @@ export function MesaTrabajoAgenda({ onAbrirEvento }: Props) {
               </button>
             </div>
             <p className="mt-1.5 text-[9px] font-semibold text-blue-700">
-              Registro corto: nace como Solicitud, sin horario. Ábrela después para completar el resto.
+              Registro corto: nace como Solicitud, sin horario. Ábrela después
+              para completar el resto.
             </p>
           </div>
         )}
 
         <div className="flex flex-wrap items-center gap-1.5">
+          <div className="grid w-full grid-cols-[1fr_auto_1fr] items-end gap-1.5 rounded-xl border border-blue-100 bg-blue-50/60 p-2 sm:mr-1 sm:w-auto">
+            <label className="text-[9px] font-extrabold uppercase tracking-wide text-[#0A70D6]">
+              Desde
+              <input
+                type="date"
+                value={desde}
+                onChange={(e) => {
+                  setDesde(e.target.value);
+                  if (e.target.value) setSoloSinHorario(false);
+                }}
+                className="mt-1 block min-w-0 rounded-lg border border-blue-200 bg-white px-2 py-1 text-[10px] font-semibold normal-case tracking-normal text-[#183558] outline-none focus:border-[#0A70D6]"
+              />
+            </label>
+            <span className="pb-1.5 text-[10px] font-bold text-blue-300">
+              —
+            </span>
+            <label className="text-[9px] font-extrabold uppercase tracking-wide text-[#0A70D6]">
+              Hasta
+              <input
+                type="date"
+                value={hasta}
+                onChange={(e) => {
+                  setHasta(e.target.value);
+                  if (e.target.value) setSoloSinHorario(false);
+                }}
+                className="mt-1 block min-w-0 rounded-lg border border-blue-200 bg-white px-2 py-1 text-[10px] font-semibold normal-case tracking-normal text-[#183558] outline-none focus:border-[#0A70D6]"
+              />
+            </label>
+          </div>
           {ESTADOS.map((e) => (
             <button
               key={e}
@@ -398,7 +527,15 @@ export function MesaTrabajoAgenda({ onAbrirEvento }: Props) {
           <button
             type="button"
             aria-pressed={soloSinHorario}
-            onClick={() => setSoloSinHorario((v) => !v)}
+            onClick={() =>
+              setSoloSinHorario((v) => {
+                if (!v) {
+                  setDesde("");
+                  setHasta("");
+                }
+                return !v;
+              })
+            }
             className={`rounded-full px-2.5 py-1 text-[9px] font-bold ring-1 ring-inset transition ${
               soloSinHorario
                 ? "bg-slate-700 text-white ring-slate-700"
@@ -422,7 +559,9 @@ export function MesaTrabajoAgenda({ onAbrirEvento }: Props) {
           <select
             value={participaGobernadorFiltro}
             onChange={(e) =>
-              setParticipaGobernadorFiltro(e.target.value as "todos" | "si" | "no")
+              setParticipaGobernadorFiltro(
+                e.target.value as "todos" | "si" | "no",
+              )
             }
             className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[9px] font-bold text-slate-600 outline-none focus:border-[#0A70D6]"
           >
@@ -466,11 +605,25 @@ export function MesaTrabajoAgenda({ onAbrirEvento }: Props) {
         </div>
       )}
 
+      {actualizacionPendiente && edicion && (
+        <div
+          role="status"
+          className="mx-4 mt-3 flex items-center gap-2.5 rounded-xl border border-sky-200 bg-sky-50 px-3.5 py-2.5 text-xs font-semibold text-sky-800"
+        >
+          <InstitutionalIcon name="clock" className="h-4 w-4 shrink-0" />
+          Hay cambios nuevos en el servidor. Tu texto sigue aquí; termina o
+          pulsa Escape para recargar antes de reintentar.
+        </div>
+      )}
+
       <div ref={contenedorRef} className="max-h-[640px] overflow-y-auto">
         {cargando ? (
           <div className="space-y-2 p-4">
             {[0, 1, 2, 3].map((i) => (
-              <div key={i} className="h-14 animate-pulse rounded-xl bg-slate-100" />
+              <div
+                key={i}
+                className="h-14 animate-pulse rounded-xl bg-slate-100"
+              />
             ))}
           </div>
         ) : filas.length === 0 ? (
@@ -479,7 +632,9 @@ export function MesaTrabajoAgenda({ onAbrirEvento }: Props) {
               <InstitutionalIcon name="calendar" />
             </div>
             <p className="text-xs font-bold text-slate-600">
-              {hayFiltrosActivos ? "Nada con estos filtros" : "Sin registros todavía"}
+              {hayFiltrosActivos
+                ? "Nada con estos filtros"
+                : "Sin registros todavía"}
             </p>
           </div>
         ) : (
@@ -502,123 +657,143 @@ export function MesaTrabajoAgenda({ onAbrirEvento }: Props) {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {filas.map((fila) => (
-                  // Toda la fila abre el detalle -- las celdas editables
-                  // (asunto/organización/lugar) paran la propagación en su
-                  // propio click para poder editar inline sin también abrir
-                  // el diálogo completo.
-                  <tr
-                    key={fila.id}
-                    className="cursor-pointer hover:bg-blue-50/40"
-                    onClick={() => onAbrirEvento(fila.id)}
-                  >
-                    <td className="whitespace-nowrap px-3 py-2.5 font-semibold text-slate-600">
-                      {fechaHora(fila)}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      {edicion?.filaId === fila.id && edicion.campo === "titulo" ? (
-                        <CeldaEdicion
-                          valor={valorEdicion}
-                          onChange={setValorEdicion}
-                          onGuardar={() => void guardarCelda(fila)}
-                          onCancelar={() => setEdicion(null)}
-                          guardando={guardandoCelda}
-                        />
-                      ) : (
-                        <button
-                          type="button"
-                          className="max-w-[220px] truncate text-left font-bold text-[#183558] hover:underline"
-                          title={`${fila.titulo} (clic: editar el asunto)`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            abrirEdicionCelda(fila, "titulo");
-                          }}
-                        >
-                          {fila.titulo}
-                        </button>
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      {edicion?.filaId === fila.id &&
-                      edicion.campo === "organizacion_solicitante" ? (
-                        <CeldaEdicion
-                          valor={valorEdicion}
-                          onChange={setValorEdicion}
-                          onGuardar={() => void guardarCelda(fila)}
-                          onCancelar={() => setEdicion(null)}
-                          guardando={guardandoCelda}
-                        />
-                      ) : (
-                        <button
-                          type="button"
-                          className="max-w-[160px] truncate text-left text-slate-600 hover:underline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            abrirEdicionCelda(fila, "organizacion_solicitante");
-                          }}
-                        >
-                          {fila.organizacion_solicitante || (
-                            <span className="text-slate-300">—</span>
-                          )}
-                        </button>
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      {edicion?.filaId === fila.id && edicion.campo === "lugar" ? (
-                        <CeldaEdicion
-                          valor={valorEdicion}
-                          onChange={setValorEdicion}
-                          onGuardar={() => void guardarCelda(fila)}
-                          onCancelar={() => setEdicion(null)}
-                          guardando={guardandoCelda}
-                        />
-                      ) : (
-                        <button
-                          type="button"
-                          className="max-w-[140px] truncate text-left text-slate-600 hover:underline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            abrirEdicionCelda(fila, "lugar");
-                          }}
-                        >
-                          {fila.lugar || <span className="text-slate-300">—</span>}
-                        </button>
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5 text-slate-600">
-                      {fila.responsable_apoyo_nombre || (
-                        <span className="text-slate-300">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-[9px] font-bold ring-1 ring-inset ${ESTADO_ESTILO[fila.estado]}`}
-                      >
-                        {ESTADO_LABEL[fila.estado]}
-                      </span>
-                    </td>
-                    <td className="px-3 py-2.5 text-center">
-                      {fila.participa_gobernador && (
-                        <span title="Participa el Gobernador" className="text-amber-600">
-                          <InstitutionalIcon name="shield" className="mx-auto h-4 w-4" />
-                        </span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5 text-center">
-                      {fila.indicacion_pendiente_id && (
-                        <span
-                          title={`Indicación pendiente: ${fila.indicacion_pendiente_tipo}`}
-                          className="text-orange-600"
-                        >
-                          <InstitutionalIcon name="message" className="mx-auto h-4 w-4" />
-                        </span>
-                      )}
-                    </td>
-                    {erroresCelda[fila.id] && (
-                      <td colSpan={8} className="px-3 pb-2 text-[9px] font-semibold text-red-600">
-                        {erroresCelda[fila.id]}
+                  <Fragment key={fila.id}>
+                    {/* Toda la fila abre el detalle. Las celdas editables
+                      detienen el click para no abrir también el diálogo. */}
+                    <tr
+                      className="cursor-pointer hover:bg-blue-50/40"
+                      onClick={() => onAbrirEvento(fila.id)}
+                    >
+                      <td className="whitespace-nowrap px-3 py-2.5 font-semibold text-slate-600">
+                        {fechaHora(fila)}
                       </td>
+                      <td className="px-3 py-2.5">
+                        {edicion?.filaId === fila.id &&
+                        edicion.campo === "titulo" ? (
+                          <CeldaEdicion
+                            valor={valorEdicion}
+                            onChange={setValorEdicion}
+                            onGuardar={() => void guardarCelda(fila)}
+                            onCancelar={cancelarEdicionCelda}
+                            guardando={guardandoCelda}
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            className="max-w-[220px] truncate text-left font-bold text-[#183558] hover:underline"
+                            title={`${fila.titulo} (clic: editar el asunto)`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              abrirEdicionCelda(fila, "titulo");
+                            }}
+                          >
+                            {fila.titulo}
+                          </button>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        {edicion?.filaId === fila.id &&
+                        edicion.campo === "organizacion_solicitante" ? (
+                          <CeldaEdicion
+                            valor={valorEdicion}
+                            onChange={setValorEdicion}
+                            onGuardar={() => void guardarCelda(fila)}
+                            onCancelar={cancelarEdicionCelda}
+                            guardando={guardandoCelda}
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            className="max-w-[160px] truncate text-left text-slate-600 hover:underline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              abrirEdicionCelda(
+                                fila,
+                                "organizacion_solicitante",
+                              );
+                            }}
+                          >
+                            {fila.organizacion_solicitante || (
+                              <span className="text-slate-300">—</span>
+                            )}
+                          </button>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        {edicion?.filaId === fila.id &&
+                        edicion.campo === "lugar" ? (
+                          <CeldaEdicion
+                            valor={valorEdicion}
+                            onChange={setValorEdicion}
+                            onGuardar={() => void guardarCelda(fila)}
+                            onCancelar={cancelarEdicionCelda}
+                            guardando={guardandoCelda}
+                          />
+                        ) : (
+                          <button
+                            type="button"
+                            className="max-w-[140px] truncate text-left text-slate-600 hover:underline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              abrirEdicionCelda(fila, "lugar");
+                            }}
+                          >
+                            {fila.lugar || (
+                              <span className="text-slate-300">—</span>
+                            )}
+                          </button>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5 text-slate-600">
+                        {fila.responsable_apoyo_nombre || (
+                          <span className="text-slate-300">—</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[9px] font-bold ring-1 ring-inset ${ESTADO_ESTILO[fila.estado]}`}
+                        >
+                          {ESTADO_LABEL[fila.estado]}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2.5 text-center">
+                        {fila.participa_gobernador && (
+                          <span
+                            title="Participa el Gobernador"
+                            className="text-amber-600"
+                          >
+                            <InstitutionalIcon
+                              name="shield"
+                              className="mx-auto h-4 w-4"
+                            />
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5 text-center">
+                        {fila.indicacion_pendiente_id && (
+                          <span
+                            title={`Indicación pendiente: ${fila.indicacion_pendiente_tipo}`}
+                            className="text-orange-600"
+                          >
+                            <InstitutionalIcon
+                              name="message"
+                              className="mx-auto h-4 w-4"
+                            />
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                    {erroresCelda[fila.id] && (
+                      <tr className="bg-red-50/70">
+                        <td
+                          colSpan={8}
+                          className="px-3 py-2 text-[9px] font-semibold text-red-700"
+                        >
+                          {erroresCelda[fila.id]}
+                        </td>
+                      </tr>
                     )}
-                  </tr>
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -635,7 +810,9 @@ export function MesaTrabajoAgenda({ onAbrirEvento }: Props) {
                   className="block w-full rounded-xl border border-slate-100 bg-slate-50/60 p-3 text-left"
                 >
                   <div className="mb-1 flex items-center justify-between gap-2">
-                    <p className="truncate text-xs font-bold text-[#183558]">{fila.titulo}</p>
+                    <p className="truncate text-xs font-bold text-[#183558]">
+                      {fila.titulo}
+                    </p>
                     <span
                       className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] font-bold ring-1 ring-inset ${ESTADO_ESTILO[fila.estado]}`}
                     >
@@ -670,6 +847,11 @@ export function MesaTrabajoAgenda({ onAbrirEvento }: Props) {
                       </span>
                     )}
                   </div>
+                  {erroresCelda[fila.id] && (
+                    <p className="mt-2 rounded-lg bg-red-50 px-2 py-1.5 text-[9px] font-semibold text-red-700">
+                      {erroresCelda[fila.id]}
+                    </p>
+                  )}
                 </button>
               ))}
             </div>
@@ -678,7 +860,9 @@ export function MesaTrabajoAgenda({ onAbrirEvento }: Props) {
       </div>
 
       <div className="flex items-center justify-between border-t border-slate-100 px-4 py-2.5 text-[10px] font-semibold text-slate-500">
-        <span>{total} {total === 1 ? "registro" : "registros"}</span>
+        <span>
+          {total} {total === 1 ? "registro" : "registros"}
+        </span>
         {paginas > 1 && (
           <div className="flex items-center gap-2">
             <button
