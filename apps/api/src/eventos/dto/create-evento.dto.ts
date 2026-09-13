@@ -42,6 +42,15 @@ export class CreateEventoDto {
   @MaxLength(200)
   lugar?: string;
 
+  // Texto libre, provisional (034_agenda_mesa_trabajo.sql): no existe hoy un
+  // directorio de organizaciones/contactos -- eso es una pieza deferida del
+  // diseño original, esto es solo la columna que la mesa de trabajo
+  // necesita mientras tanto.
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  organizacionSolicitante?: string;
+
   // Opcionales: "registro corto, incluso sin horario" (solicitud de apoyo).
   // Cualquier otro estado exige ambas -- lo exige igual la base
   // (estado_requiere_fecha, 029_agenda_solicitudes.sql); acá solo se valida

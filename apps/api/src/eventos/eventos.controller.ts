@@ -17,6 +17,7 @@ import { ReemplazarColaboradoresDto } from './dto/colaboradores.dto';
 import { ConflictosEventoDto } from './dto/conflictos-evento.dto';
 import { CreateIndicacionDto } from './dto/create-indicacion.dto';
 import { AtenderIndicacionDto } from './dto/atender-indicacion.dto';
+import { MesaTrabajoFiltroDto } from './dto/mesa-trabajo-filtro.dto';
 
 @Controller('eventos')
 export class EventosController {
@@ -29,6 +30,14 @@ export class EventosController {
     @Query('miParticipacion') miParticipacion?: string,
   ) {
     return this.service.listar(desde, hasta, miParticipacion === 'true');
+  }
+
+  // Declarado ANTES de @Get(':id') a propósito -- mismo motivo que
+  // 'indicaciones/:indicacionId' más abajo: si ':id' fuera primero,
+  // "mesa-trabajo" caería ahí como si fuera un id de evento.
+  @Get('mesa-trabajo')
+  mesaTrabajo(@Query() filtro: MesaTrabajoFiltroDto) {
+    return this.service.mesaTrabajo(filtro);
   }
 
   @Get(':id')

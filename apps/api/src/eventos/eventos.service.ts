@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -13,10 +14,13 @@ import { ConflictosEventoDto } from './dto/conflictos-evento.dto';
 import { EventoEstado } from './dto/evento-estado.enum';
 import { CreateIndicacionDto } from './dto/create-indicacion.dto';
 import { AtenderIndicacionDto } from './dto/atender-indicacion.dto';
+import { MesaTrabajoFiltroDto } from './dto/mesa-trabajo-filtro.dto';
+import { limites, paginar } from '../common/paginacion';
 
 const SELECT_FIELDS = `
-  id, secretaria_id, tipo, titulo, descripcion, lugar, fecha_inicio, fecha_fin,
-  nivel_confidencialidad, recordatorios_activos, estado, creado_por, created_at, updated_at
+  id, secretaria_id, tipo, titulo, descripcion, lugar, organizacion_solicitante,
+  fecha_inicio, fecha_fin, nivel_confidencialidad, recordatorios_activos, estado,
+  creado_por, created_at, updated_at
 `;
 
 // secretaria_id IS NULL es, hoy, la única marca de "esto es agenda del
@@ -72,6 +76,93 @@ export class EventosService {
       [desde ?? null, hasta ?? null, soloMiParticipacion, userId],
     );
     return rows;
+  }
+
+  // Mesa de trabajo (vista de tabla): mismos eventos_agenda de siempre,
+  // filtrados/buscados/paginados para uso rápido de la Jefa. RLS de
+  // siempre (eventos_select) decide qué filas puede ver quien pregunta --
+  // acá no se repite ningún chequeo de permiso, solo se arma la consulta.
+  //
+  // "Persona de apoyo responsable" sale de evento_colaboradores (trabajo
+  // delegado), nunca de evento_responsables (participación/invitado) --
+  // ser invitado no vuelve a nadie responsable, ni acá ni en ningún otro
+  // lado del sistema (029_agenda_solicitudes.sql). Si hay más de un
+  // colaborador con rol apoyo (la Jefa reasignó y no quitó al anterior),
+  // se muestra el más antiguo asignado -- normalmente quien la registró.
+  async mesaTrabajo(filtro: MesaTrabajoFiltroDto) {
+    const lim = limites(filtro.pagina, filtro.porPagina);
+    const busqueda = filtro.busqueda?.trim() || null;
+    const estados = filtro.estado?.length ? filtro.estado : null;
+
+    const { rows } = await this.tx.query(
+      `SELECT e.id, e.titulo, e.organizacion_solicitante, e.lugar, e.estado,
+              e.fecha_inicio, e.fecha_fin, e.secretaria_id, e.updated_at,
+              apoyo_resp.id AS responsable_apoyo_id,
+              apoyo_resp.nombre AS responsable_apoyo_nombre,
+              EXISTS (
+                SELECT 1 FROM evento_responsables er
+                JOIN usuario_roles ur ON ur.usuario_id = er.usuario_id
+                JOIN roles r ON r.id = ur.rol_id
+                WHERE er.evento_id = e.id AND r.nombre = 'gobernador'
+              ) AS participa_gobernador,
+              indicacion.id AS indicacion_pendiente_id,
+              indicacion.tipo AS indicacion_pendiente_tipo,
+              count(*) OVER() AS _total
+       FROM eventos_agenda e
+       LEFT JOIN LATERAL (
+         SELECT u.id, u.nombre
+         FROM evento_colaboradores ec
+         JOIN usuarios u ON u.id = ec.usuario_id
+         JOIN usuario_roles ur ON ur.usuario_id = u.id
+         JOIN roles r ON r.id = ur.rol_id
+         WHERE ec.evento_id = e.id AND r.nombre = 'apoyo'
+         ORDER BY ec.asignado_at ASC
+         LIMIT 1
+       ) apoyo_resp ON true
+       LEFT JOIN LATERAL (
+         SELECT ei.id, ei.tipo
+         FROM evento_indicaciones ei
+         WHERE ei.evento_id = e.id AND ei.estado = 'pendiente'
+         ORDER BY ei.created_at ASC
+         LIMIT 1
+       ) indicacion ON true
+       WHERE ($1::timestamptz IS NULL OR e.fecha_fin >= $1)
+         AND ($2::timestamptz IS NULL OR e.fecha_inicio <= $2)
+         AND (
+           $3::text IS NULL
+           OR e.titulo ILIKE '%' || $3 || '%'
+           OR e.organizacion_solicitante ILIKE '%' || $3 || '%'
+           OR e.lugar ILIKE '%' || $3 || '%'
+         )
+         AND ($4::evento_estado[] IS NULL OR e.estado = ANY($4))
+         AND ($5::uuid IS NULL OR apoyo_resp.id = $5)
+         AND (
+           $6::boolean IS NULL
+           OR EXISTS (
+             SELECT 1 FROM evento_responsables er2
+             JOIN usuario_roles ur2 ON ur2.usuario_id = er2.usuario_id
+             JOIN roles r2 ON r2.id = ur2.rol_id
+             WHERE er2.evento_id = e.id AND r2.nombre = 'gobernador'
+           ) = $6
+         )
+         AND ($7::boolean IS NULL OR (e.fecha_inicio IS NULL) = $7)
+         AND ($8::boolean IS NULL OR (indicacion.id IS NOT NULL) = $8)
+       ORDER BY e.fecha_inicio ASC NULLS FIRST, e.created_at DESC
+       LIMIT $9 OFFSET $10`,
+      [
+        filtro.desde ?? null,
+        filtro.hasta ?? null,
+        busqueda,
+        estados,
+        filtro.responsableApoyoId ?? null,
+        filtro.participaGobernador ?? null,
+        filtro.sinHorario ?? null,
+        filtro.conIndicacionPendiente ?? null,
+        lim.limit,
+        lim.offset,
+      ],
+    );
+    return paginar(rows, lim);
   }
 
   async obtener(id: string) {
@@ -218,6 +309,7 @@ export class EventosService {
         'titulo',
         'descripcion',
         'lugar',
+        'organizacion_solicitante',
         'fecha_inicio',
         'fecha_fin',
         'nivel_confidencialidad',
@@ -230,6 +322,7 @@ export class EventosService {
         dto.titulo,
         dto.descripcion ?? null,
         dto.lugar ?? null,
+        dto.organizacionSolicitante ?? null,
         dto.fechaInicio ?? null,
         dto.fechaFin ?? null,
         dto.nivelConfidencialidad,
@@ -329,6 +422,7 @@ export class EventosService {
       titulo: dto.titulo,
       descripcion: dto.descripcion,
       lugar: dto.lugar,
+      organizacion_solicitante: dto.organizacionSolicitante,
       fecha_inicio: dto.fechaInicio,
       fecha_fin: dto.fechaFin,
       nivel_confidencialidad: dto.nivelConfidencialidad,
@@ -360,16 +454,53 @@ export class EventosService {
       campos.push(`updated_at = now()`);
       valores.push(id);
 
+      // Bloqueo optimista ("protección frente a cambios simultáneos",
+      // 034_agenda_mesa_trabajo.sql): si el cliente mandó el updated_at que
+      // vio la última vez, el WHERE exige que siga siendo ese -- si otra
+      // persona ya guardó un cambio en el medio, esta fila ya no matchea y
+      // el UPDATE afecta 0 filas. Eso es lo que distingue el 409 (existe
+      // pero cambió) del 404 (no existe) más abajo.
+      //
+      // date_trunc a milisegundos de los DOS lados, no solo del que manda
+      // el cliente -- bug real encontrado al probar esto: Postgres guarda
+      // timestamptz con precisión de microsegundos, pero el valor que
+      // vuelve como JSON pasa por un Date de JS (que solo tiene
+      // milisegundos) -- una comparación exacta contra ese valor fallaba
+      // SIEMPRE, incluso en el primer guardado, aunque nadie más hubiera
+      // tocado el registro. Comparar a la misma precisión que el cliente
+      // realmente pudo ver es la corrección, no forzar que se escriba
+      // truncado desde ahora (eso no arregla filas ya existentes).
+      let clausulaId = `id = $${i}`;
+      if (dto.ifUpdatedAt !== undefined) {
+        clausulaId += ` AND date_trunc('milliseconds', updated_at) = date_trunc('milliseconds', $${i + 1}::timestamptz)`;
+        valores.push(dto.ifUpdatedAt);
+      }
+
       const { rows } = await this.tx.query(
-        `UPDATE eventos_agenda SET ${campos.join(', ')} WHERE id = $${i} RETURNING ${SELECT_FIELDS}`,
+        `UPDATE eventos_agenda SET ${campos.join(', ')} WHERE ${clausulaId} RETURNING ${SELECT_FIELDS}`,
         valores,
       );
-      if (rows.length === 0)
+      if (rows.length === 0) {
+        if (dto.ifUpdatedAt !== undefined) {
+          const { rows: actuales } = await this.tx.query(
+            `SELECT ${SELECT_FIELDS} FROM eventos_agenda WHERE id = $1`,
+            [id],
+          );
+          if (actuales.length === 0)
+            throw new NotFoundException('Evento no encontrado');
+          throw new ConflictException({
+            message:
+              'Otra persona modificó este registro mientras tanto. Revisa los cambios antes de guardar.',
+            actual: actuales[0],
+          });
+        }
         throw new NotFoundException('Evento no encontrado');
+      }
 
       return rows[0];
     } catch (err) {
-      if (err instanceof NotFoundException) throw err;
+      if (err instanceof NotFoundException || err instanceof ConflictException)
+        throw err;
       mapPgError(err);
     }
   }
