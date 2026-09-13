@@ -1,7 +1,10 @@
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+export const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
 
-export type NivelConfidencialidad = "publica" | "interna" | "reservada" | "confidencial";
-export type EstadoPublicacion = "borrador" | "revision" | "aprobado" | "publicado";
+export type NivelConfidencialidad =
+  "publica" | "interna" | "reservada" | "confidencial";
+export type EstadoPublicacion =
+  "borrador" | "revision" | "aprobado" | "publicado";
 
 export interface Publicacion {
   id: string;
@@ -12,6 +15,14 @@ export interface Publicacion {
   estado: EstadoPublicacion;
   created_at: string;
   updated_at?: string;
+  // Sello del flujo de aprobación (021): quién/cuándo en cada transición +
+  // motivo cuando fue devuelta a borrador.
+  motivo_rechazo?: string | null;
+  enviado_revision_at?: string | null;
+  aprobado_por?: string | null;
+  aprobado_at?: string | null;
+  publicado_por?: string | null;
+  publicado_at?: string | null;
 }
 
 export class ApiError extends Error {
@@ -47,7 +58,10 @@ let refreshEnCurso: Promise<boolean> | null = null;
 
 async function intentarRefresh(): Promise<boolean> {
   if (!refreshEnCurso) {
-    refreshEnCurso = fetch(`${API_URL}/auth/refresh`, { method: "POST", credentials: "include" })
+    refreshEnCurso = fetch(`${API_URL}/auth/refresh`, {
+      method: "POST",
+      credentials: "include",
+    })
       .then((r) => r.ok)
       .catch(() => false)
       .finally(() => {
@@ -59,7 +73,11 @@ async function intentarRefresh(): Promise<boolean> {
 
 // credentials: "include" en cada request: la sesión vive en cookies httpOnly
 // (access_token / refresh_token) que el navegador adjunta solo.
-async function request<T>(path: string, options: RequestInit = {}, _reintento = false): Promise<T> {
+async function request<T>(
+  path: string,
+  options: RequestInit = {},
+  _reintento = false,
+): Promise<T> {
   const res = await fetch(`${API_URL}${path}`, {
     ...options,
     credentials: "include",
@@ -70,7 +88,8 @@ async function request<T>(path: string, options: RequestInit = {}, _reintento = 
   });
 
   // 401 en un endpoint normal -> probar refrescar y reintentar una vez.
-  const esAuth = path.startsWith("/auth/login") || path.startsWith("/auth/refresh");
+  const esAuth =
+    path.startsWith("/auth/login") || path.startsWith("/auth/refresh");
   if (res.status === 401 && !_reintento && !esAuth) {
     if (await intentarRefresh()) return request<T>(path, options, true);
   }
@@ -82,8 +101,13 @@ async function request<T>(path: string, options: RequestInit = {}, _reintento = 
   const body = text ? JSON.parse(text) : null;
 
   if (!res.ok) {
-    const message = Array.isArray(body?.message) ? body.message.join(", ") : body?.message;
-    throw new ApiError(message ?? res.statusText ?? "Error inesperado", res.status);
+    const message = Array.isArray(body?.message)
+      ? body.message.join(", ")
+      : body?.message;
+    throw new ApiError(
+      message ?? res.statusText ?? "Error inesperado",
+      res.status,
+    );
   }
 
   return body as T;
@@ -119,12 +143,26 @@ export function getPublicaciones() {
   return lista<Publicacion>("/publicaciones");
 }
 
-export function crearPublicacion(data: { titulo: string; contenido: string; nivelConfidencialidad: NivelConfidencialidad }) {
-  return request<Publicacion>("/publicaciones", { method: "POST", body: JSON.stringify(data) });
+export function crearPublicacion(data: {
+  titulo: string;
+  contenido: string;
+  nivelConfidencialidad: NivelConfidencialidad;
+}) {
+  return request<Publicacion>("/publicaciones", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 }
 
-export function actualizarEstado(id: string, estado: EstadoPublicacion) {
-  return request<Publicacion>(`/publicaciones/${id}/estado`, { method: "PATCH", body: JSON.stringify({ estado }) });
+export function actualizarEstado(
+  id: string,
+  estado: EstadoPublicacion,
+  motivo?: string,
+) {
+  return request<Publicacion>(`/publicaciones/${id}/estado`, {
+    method: "PATCH",
+    body: JSON.stringify(motivo ? { estado, motivo } : { estado }),
+  });
 }
 
 export interface Secretaria {
@@ -153,32 +191,216 @@ export interface ActualizarSecretariaInput {
 }
 
 export function crearSecretaria(data: CrearSecretariaInput) {
-  return request<Secretaria>("/admin/secretarias", { method: "POST", body: JSON.stringify(data) });
+  return request<Secretaria>("/admin/secretarias", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 }
 
-export function actualizarSecretaria(id: string, data: ActualizarSecretariaInput) {
-  return request<Secretaria>(`/admin/secretarias/${id}`, { method: "PATCH", body: JSON.stringify(data) });
+export function actualizarSecretaria(
+  id: string,
+  data: ActualizarSecretariaInput,
+) {
+  return request<Secretaria>(`/admin/secretarias/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
 }
 
+export type AccionAuditoria = "INSERT" | "UPDATE" | "DELETE";
+
+export interface FiltrosAuditoria {
+  q?: string;
+  modulo?: string; // csv de nombres de tabla
+  accion?: string; // csv de INSERT,UPDATE,DELETE
+  usuarioId?: string;
+  secretariaId?: string;
+  desde?: string; // ISO con offset
+  hasta?: string; // ISO con offset
+  pagina?: number;
+  porPagina?: number;
+}
+
+// Fila de la lista: liviana, sin los blobs. El diff campo-a-campo y el JSON
+// crudo se piden aparte con getAuditoriaDetalle().
 export interface RegistroAuditoria {
   id: number;
+  created_at: string;
+  accion: AccionAuditoria;
   tabla: string;
-  accion: string;
   registro_id: string;
+  usuario_email: string | null;
+  usuario_nombre: string | null;
+  secretaria_id: string | null;
+  secretaria_nombre: string | null;
+  resumen: string;
+}
+
+export interface AuditoriaResumen {
+  total: number;
+  creaciones: number;
+  actualizaciones: number;
+  eliminaciones: number;
+  actores: number;
+}
+
+export interface CampoCambio {
+  campo: string;
+  antesPresente: boolean;
+  antes: unknown;
+  despuesPresente: boolean;
+  despues: unknown;
+  cambiado: boolean;
+}
+
+export interface RegistroAuditoriaDetalle extends RegistroAuditoria {
+  usuario_rol_actual: string | null;
+  usuario_area_actual: string | null;
+  cambios: CampoCambio[];
   datos_anteriores: Record<string, unknown> | null;
   datos_nuevos: Record<string, unknown> | null;
-  created_at: string;
-  usuario_email: string | null;
 }
 
-export function getAuditoria() {
-  return lista<RegistroAuditoria>("/auditoria");
+function qsAuditoria(f: FiltrosAuditoria): string {
+  const p = new URLSearchParams();
+  if (f.q) p.set("q", f.q);
+  if (f.modulo) p.set("modulo", f.modulo);
+  if (f.accion) p.set("accion", f.accion);
+  if (f.usuarioId) p.set("usuarioId", f.usuarioId);
+  if (f.secretariaId) p.set("secretariaId", f.secretariaId);
+  if (f.desde) p.set("desde", f.desde);
+  if (f.hasta) p.set("hasta", f.hasta);
+  if (f.pagina) p.set("pagina", String(f.pagina));
+  if (f.porPagina) p.set("porPagina", String(f.porPagina));
+  const s = p.toString();
+  return s ? `?${s}` : "";
 }
 
-export function getAuditoriaPaginada(pagina = 1, porPagina = 30) {
-  return request<Paginado<RegistroAuditoria>>(
-    `/auditoria?pagina=${pagina}&porPagina=${porPagina}`,
+const sinPaginacion = (f: FiltrosAuditoria): FiltrosAuditoria => ({
+  ...f,
+  pagina: undefined,
+  porPagina: undefined,
+});
+
+export function getAuditoria(f: FiltrosAuditoria = {}) {
+  return request<Paginado<RegistroAuditoria>>(`/auditoria${qsAuditoria(f)}`);
+}
+
+export function getAuditoriaResumen(f: FiltrosAuditoria = {}) {
+  return request<AuditoriaResumen>(
+    `/auditoria/resumen${qsAuditoria(sinPaginacion(f))}`,
   );
+}
+
+export function getAuditoriaDetalle(id: number) {
+  return request<RegistroAuditoriaDetalle>(`/auditoria/${id}`);
+}
+
+// El CSV se baja como blob (igual que descargarDocumento): la cookie viaja
+// sola con credentials: "include".
+export async function exportarAuditoriaCsv(f: FiltrosAuditoria = {}) {
+  const res = await fetch(
+    `${API_URL}/auditoria/export.csv${qsAuditoria(sinPaginacion(f))}`,
+    {
+      credentials: "include",
+    },
+  );
+  if (!res.ok)
+    throw new ApiError("No se pudo exportar la auditoría", res.status);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `auditoria-${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+// "Mi bandeja": lo que espera mi acción, agregado de varios módulos. El
+// backend ya lo filtra por RLS + rol.
+export interface Pendientes {
+  publicaciones: {
+    porRevisar: {
+      id: string;
+      titulo: string;
+      secretaria_id: string | null;
+      updated_at: string;
+    }[];
+    porPublicar: {
+      id: string;
+      titulo: string;
+      secretaria_id: string | null;
+      aprobado_at: string | null;
+    }[];
+    rechazadas: {
+      id: string;
+      titulo: string;
+      motivo_rechazo: string | null;
+      updated_at: string;
+    }[];
+  };
+  tareas: {
+    id: string;
+    titulo: string;
+    estado: TareaEstado;
+    prioridad: TareaPrioridad;
+    fecha_vencimiento: string | null;
+    vencida: boolean;
+  }[];
+  compromisos: {
+    id: string;
+    descripcion: string;
+    fecha_limite: string | null;
+    evento_id: string;
+    reunion: string | null;
+    vencido: boolean;
+  }[];
+  comunicacion: {
+    id: string;
+    estado: CoberturaEstado;
+    evento_titulo: string | null;
+    evento_fecha: string | null;
+    secretaria_nombre: string | null;
+  }[];
+  agenda: {
+    // Solo jefe_gabinete/admin: todo lo transversal en estado temprano,
+    // esperando que la jefa proponga/confirme horario.
+    solicitudesPorRevisar: {
+      id: string;
+      titulo: string;
+      estado: EventoEstado;
+      fecha_inicio: string | null;
+      fecha_fin: string | null;
+      created_at: string;
+      creado_por_nombre: string | null;
+    }[];
+    // Solo apoyo: estado de lo que fue registrando.
+    misSolicitudes: {
+      id: string;
+      titulo: string;
+      estado: EventoEstado;
+      fecha_inicio: string | null;
+      fecha_fin: string | null;
+      created_at: string;
+    }[];
+    // Solo jefe_gabinete/admin: indicaciones del Gobernador sin atender.
+    indicacionesPendientes: {
+      id: string;
+      evento_id: string;
+      tipo: IndicacionTipo;
+      texto: string;
+      created_at: string;
+      evento_titulo: string;
+      autor_nombre: string;
+    }[];
+  };
+  total: number;
+}
+
+export function getPendientes() {
+  return request<Pendientes>("/pendientes");
 }
 
 export interface Documento {
@@ -199,14 +421,19 @@ export function getDocumentos(publicacionId: string) {
 export async function subirDocumento(publicacionId: string, archivo: File) {
   const form = new FormData();
   form.append("archivo", archivo);
-  const res = await fetch(`${API_URL}/publicaciones/${publicacionId}/documentos`, {
-    method: "POST",
-    credentials: "include",
-    body: form,
-  });
+  const res = await fetch(
+    `${API_URL}/publicaciones/${publicacionId}/documentos`,
+    {
+      method: "POST",
+      credentials: "include",
+      body: form,
+    },
+  );
   if (!res.ok) {
     const body = await res.json().catch(() => ({ message: res.statusText }));
-    const message = Array.isArray(body.message) ? body.message.join(", ") : body.message;
+    const message = Array.isArray(body.message)
+      ? body.message.join(", ")
+      : body.message;
     throw new ApiError(message ?? "Error al subir", res.status);
   }
   return res.json() as Promise<Documento>;
@@ -215,7 +442,9 @@ export async function subirDocumento(publicacionId: string, archivo: File) {
 // Descarga autenticada: se baja como blob y se fuerza el guardado (la cookie
 // va sola con credentials: "include", igual que en cualquier otro request).
 export async function descargarDocumento(doc: Documento) {
-  const res = await fetch(`${API_URL}/documentos/${doc.id}/descargar`, { credentials: "include" });
+  const res = await fetch(`${API_URL}/documentos/${doc.id}/descargar`, {
+    credentials: "include",
+  });
   if (!res.ok) throw new ApiError("No se pudo descargar", res.status);
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
@@ -229,30 +458,65 @@ export async function descargarDocumento(doc: Documento) {
 }
 
 export function eliminarDocumento(id: string) {
-  return request<{ eliminado: boolean }>(`/documentos/${id}`, { method: "DELETE" });
+  return request<{ eliminado: boolean }>(`/documentos/${id}`, {
+    method: "DELETE",
+  });
 }
 
+export type EventoTipo =
+  "reunion" | "audiencia" | "inspeccion" | "acto" | "conferencia" | "otro";
+
+// Espejo de evento_estado (029_agenda_solicitudes.sql). DEFAULT en la base
+// es 'confirmado' -- lo que ya existía antes de este campo sigue viéndose
+// igual.
+export type EventoEstado =
+  | "solicitud"
+  | "tentativo"
+  | "confirmado"
+  | "cancelado"
+  | "realizado"
+  | "no_realizado";
+
+// fecha_inicio/fecha_fin quedan como `string` (no nullable) acá a propósito:
+// getEventos()/listar() filtran por rango de fechas (WHERE fecha_fin >= ...
+// AND fecha_inicio <= ...), así que una 'solicitud' sin horario (ambas en
+// NULL) nunca puede aparecer en esa lista -- vive en la bandeja de
+// pendientes hasta que alguien le pone horario. Donde sí puede llegar una
+// fila con fechas en null es al pedir UN evento puntual por id
+// (EventoDetalle, más abajo) -- por ejemplo desde el enlace de la bandeja.
 export interface Evento {
   id: string;
   secretaria_id: string | null;
+  tipo: EventoTipo;
   titulo: string;
   descripcion: string | null;
   lugar: string | null;
   fecha_inicio: string;
   fecha_fin: string;
   nivel_confidencialidad: NivelConfidencialidad;
+  recordatorios_activos: boolean;
+  estado: EventoEstado;
   creado_por: string | null;
   created_at: string;
   updated_at: string;
 }
 
 export interface CrearEventoInput {
+  tipo?: EventoTipo;
   titulo: string;
   descripcion?: string;
   lugar?: string;
-  fechaInicio: string;
-  fechaFin: string;
+  // Opcionales: una "solicitud" de apoyo puede registrarse sin horario
+  // todavía (029_agenda_solicitudes.sql). Cualquier otro estado los exige --
+  // lo valida el backend/la base, no este tipo.
+  fechaInicio?: string;
+  fechaFin?: string;
   nivelConfidencialidad: NivelConfidencialidad;
+  recordatoriosActivos?: boolean;
+  estado?: EventoEstado;
+  // Explícito, nunca inferido de confirmar -- ver eventos.service.ts,
+  // marcarParticipacionGobernador().
+  participaGobernador?: boolean;
 }
 
 export interface Participante {
@@ -261,36 +525,131 @@ export interface Participante {
   email: string;
 }
 
-export interface EventoDetalle extends Evento {
+export interface EventoDetalle extends Omit<Evento, "fecha_inicio" | "fecha_fin"> {
+  // Acá sí puede venir en null: una 'solicitud' todavía sin horario,
+  // llegada por ejemplo desde el enlace de la bandeja de pendientes.
+  fecha_inicio: string | null;
+  fecha_fin: string | null;
   responsables: Participante[];
   creador: Participante | null;
+  // Computado en el backend (no una columna) -- ver EventosService.obtener().
+  participaGobernador: boolean;
+}
+
+// ---- Indicaciones del Gobernador (032_evento_indicaciones.sql) ----
+
+export type IndicacionTipo = "reprogramar" | "cancelar" | "aclaracion" | "otro";
+export type IndicacionEstado = "pendiente" | "aplicada" | "descartada";
+
+export interface Indicacion {
+  id: string;
+  evento_id: string;
+  tipo: IndicacionTipo;
+  texto: string;
+  estado: IndicacionEstado;
+  atendida_at: string | null;
+  resultado_nota: string | null;
+  created_at: string;
+  autor_id: string;
+  autor_nombre: string;
+  atendida_por_id: string | null;
+  atendida_por_nombre: string | null;
+}
+
+export function crearIndicacion(eventoId: string, data: { tipo: IndicacionTipo; texto: string }) {
+  return request<Indicacion>(`/eventos/${eventoId}/indicaciones`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export function getIndicaciones(eventoId: string) {
+  return request<Indicacion[]>(`/eventos/${eventoId}/indicaciones`);
+}
+
+export function atenderIndicacion(
+  indicacionId: string,
+  data: { estado: "aplicada" | "descartada"; resultadoNota?: string },
+) {
+  return request<Indicacion>(`/eventos/indicaciones/${indicacionId}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
 }
 
 export function getEvento(id: string) {
   return request<EventoDetalle>(`/eventos/${id}`);
 }
 
-export function getEventos(desde?: string, hasta?: string) {
+export function getEventos(
+  desde?: string,
+  hasta?: string,
+  opciones?: { miParticipacion?: boolean },
+) {
   const params = new URLSearchParams();
   if (desde) params.set("desde", desde);
   if (hasta) params.set("hasta", hasta);
+  if (opciones?.miParticipacion) params.set("miParticipacion", "true");
   const qs = params.toString();
   return request<Evento[]>(`/eventos${qs ? `?${qs}` : ""}`);
 }
 
 export function crearEvento(data: CrearEventoInput) {
-  return request<Evento>("/eventos", { method: "POST", body: JSON.stringify(data) });
+  return request<Evento>("/eventos", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+// oculto=true: cruza con algo ya agendado del Gobernador que quien pregunta
+// no puede ver en detalle (evento confidencial de otra secretaría, etc.) --
+// id/titulo vienen null a propósito, nunca se debe intentar "completar" esa
+// fila pidiendo el evento por id. Ver fn_disponibilidad_gobernador,
+// 028_agenda_seguridad_conflictos.sql.
+export interface ConflictoEvento {
+  id: string | null;
+  titulo: string | null;
+  fecha_inicio: string;
+  fecha_fin: string;
+  oculto: boolean;
+}
+
+export function buscarConflictosEvento(data: {
+  fechaInicio: string;
+  fechaFin: string;
+  excluirId?: string;
+}) {
+  return request<ConflictoEvento[]>("/eventos/conflictos", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 }
 
 export function actualizarEvento(id: string, data: Partial<CrearEventoInput>) {
-  return request<Evento>(`/eventos/${id}`, { method: "PATCH", body: JSON.stringify(data) });
+  return request<Evento>(`/eventos/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
 }
 
 export function eliminarEvento(id: string) {
-  return request<{ eliminado: boolean }>(`/eventos/${id}`, { method: "DELETE" });
+  return request<{ eliminado: boolean }>(`/eventos/${id}`, {
+    method: "DELETE",
+  });
 }
 
-export type TareaEstado = "pendiente" | "en_progreso" | "completada" | "cancelada";
+// Colaboración (evento_colaboradores, 029) es trabajo delegado, distinto de
+// ser invitado (responsables) -- normalmente lo asigna quien puede editar el
+// evento (la jefa). `apoyo` ya queda auto-asignado a lo que crea (backend).
+export function reemplazarColaboradoresEvento(id: string, usuarioIds: string[]) {
+  return request<{ actualizado: boolean }>(`/eventos/${id}/colaboradores`, {
+    method: "PUT",
+    body: JSON.stringify({ usuarioIds }),
+  });
+}
+
+export type TareaEstado =
+  "pendiente" | "en_progreso" | "completada" | "cancelada";
 export type TareaPrioridad = "baja" | "media" | "alta";
 
 export interface TareaAsignado {
@@ -308,6 +667,7 @@ export interface Tarea {
   fecha_vencimiento: string | null;
   nivel_confidencialidad: NivelConfidencialidad;
   creado_por: string | null;
+  completada_at: string | null;
   created_at: string;
   updated_at: string;
   asignados: TareaAsignado[];
@@ -327,14 +687,22 @@ export function getTareas() {
 }
 
 export function crearTarea(data: CrearTareaInput) {
-  return request<Tarea>("/tareas", { method: "POST", body: JSON.stringify(data) });
+  return request<Tarea>("/tareas", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 }
 
 export function actualizarTarea(
   id: string,
-  data: Partial<Omit<CrearTareaInput, "asignadoIds">> & { estado?: TareaEstado },
+  data: Partial<Omit<CrearTareaInput, "asignadoIds">> & {
+    estado?: TareaEstado;
+  },
 ) {
-  return request<Tarea>(`/tareas/${id}`, { method: "PATCH", body: JSON.stringify(data) });
+  return request<Tarea>(`/tareas/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
 }
 
 export function eliminarTarea(id: string) {
@@ -396,7 +764,8 @@ export function getGabineteResumen() {
   return request<GabineteResumen>("/gabinete/resumen");
 }
 
-export type ProyectoEstado = "planificacion" | "en_ejecucion" | "pausado" | "finalizado" | "cancelado";
+export type ProyectoEstado =
+  "planificacion" | "en_ejecucion" | "pausado" | "finalizado" | "cancelado";
 
 export interface Proyecto {
   id: string;
@@ -433,15 +802,23 @@ export function getProyectos() {
 }
 
 export function crearProyecto(data: CrearProyectoInput) {
-  return request<Proyecto>("/proyectos", { method: "POST", body: JSON.stringify(data) });
+  return request<Proyecto>("/proyectos", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 }
 
 export function actualizarProyecto(id: string, data: ActualizarProyectoInput) {
-  return request<Proyecto>(`/proyectos/${id}`, { method: "PATCH", body: JSON.stringify(data) });
+  return request<Proyecto>(`/proyectos/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
 }
 
 export function eliminarProyecto(id: string) {
-  return request<{ eliminado: boolean }>(`/proyectos/${id}`, { method: "DELETE" });
+  return request<{ eliminado: boolean }>(`/proyectos/${id}`, {
+    method: "DELETE",
+  });
 }
 
 export interface IndicadoresResumen {
@@ -480,6 +857,7 @@ export interface Compromiso {
   responsable_nombre: string | null;
   fecha_limite: string | null;
   estado: CompromisoEstado;
+  cumplido_at: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -489,29 +867,132 @@ export function getActa(eventoId: string) {
 }
 
 export function guardarActa(eventoId: string, contenido: string) {
-  return request<ReunionActa>(`/eventos/${eventoId}/acta`, { method: "PUT", body: JSON.stringify({ contenido }) });
+  return request<ReunionActa>(`/eventos/${eventoId}/acta`, {
+    method: "PUT",
+    body: JSON.stringify({ contenido }),
+  });
 }
 
 export function getCompromisos(eventoId: string) {
   return request<Compromiso[]>(`/eventos/${eventoId}/compromisos`);
 }
 
-export function crearCompromiso(eventoId: string, data: { descripcion: string; responsableId?: string; fechaLimite?: string }) {
-  return request<Compromiso>(`/eventos/${eventoId}/compromisos`, { method: "POST", body: JSON.stringify(data) });
+export function crearCompromiso(
+  eventoId: string,
+  data: { descripcion: string; responsableId?: string; fechaLimite?: string },
+) {
+  return request<Compromiso>(`/eventos/${eventoId}/compromisos`, {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 }
 
 export function actualizarCompromiso(
   id: string,
-  data: Partial<{ descripcion: string; responsableId: string; fechaLimite: string; estado: CompromisoEstado }>,
+  data: Partial<{
+    descripcion: string;
+    responsableId: string;
+    fechaLimite: string;
+    estado: CompromisoEstado;
+  }>,
 ) {
-  return request<Compromiso>(`/compromisos/${id}`, { method: "PATCH", body: JSON.stringify(data) });
+  return request<Compromiso>(`/compromisos/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
 }
 
 export function eliminarCompromiso(id: string) {
-  return request<{ eliminado: boolean }>(`/compromisos/${id}`, { method: "DELETE" });
+  return request<{ eliminado: boolean }>(`/compromisos/${id}`, {
+    method: "DELETE",
+  });
 }
 
-export type RolNombre = "gobernador" | "jefe_gabinete" | "admin" | "secretario" | "director" | "operador";
+export type RolNombre =
+  | "gobernador"
+  | "jefe_gabinete"
+  | "admin"
+  | "unicom"
+  | "secretario"
+  | "director"
+  | "operador"
+  | "apoyo";
+
+// ---- Comunicación (cobertura de eventos) ----
+
+export type CoberturaEstado =
+  | "solicitada"
+  | "planificada"
+  | "en_produccion"
+  | "lista"
+  | "publicada"
+  | "descartada";
+
+export interface Cobertura {
+  id: string;
+  evento_id: string;
+  estado: CoberturaEstado;
+  solicitada_por: string | null;
+  solicitada_at: string;
+  comunicador_id: string | null;
+  tipo_pieza: string[];
+  enfoque: string | null;
+  gabinete_visto_at: string | null;
+  gabinete_por: string | null;
+  publicacion_id: string | null;
+  updated_at: string;
+  evento_titulo: string | null;
+  evento_fecha: string | null;
+  evento_lugar: string | null;
+  evento_secretaria_id: string | null;
+  secretaria_nombre: string | null;
+  solicitante_nombre: string | null;
+  comunicador_nombre: string | null;
+}
+
+export function getCoberturas(
+  params: { mes?: string; estado?: string; secretaria?: string } = {},
+) {
+  const q = new URLSearchParams();
+  if (params.mes) q.set("mes", params.mes);
+  if (params.estado) q.set("estado", params.estado);
+  if (params.secretaria) q.set("secretaria", params.secretaria);
+  const s = q.toString();
+  return request<Cobertura[]>(`/comunicacion${s ? `?${s}` : ""}`);
+}
+
+export function pedirCobertura(eventoId: string) {
+  return request<Cobertura>("/comunicacion", {
+    method: "POST",
+    body: JSON.stringify({ eventoId }),
+  });
+}
+
+export function actualizarCobertura(
+  id: string,
+  data: {
+    estado?: CoberturaEstado;
+    comunicadorId?: string;
+    tipoPieza?: string[];
+    enfoque?: string;
+    publicacionId?: string;
+  },
+) {
+  return request<Cobertura>(`/comunicacion/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
+}
+
+export function darVistoCobertura(id: string) {
+  return request<Cobertura>(`/comunicacion/${id}/gabinete-visto`, {
+    method: "POST",
+  });
+}
+
+export function getEquipoComunicacion() {
+  return request<{ id: string; nombre: string }[]>("/comunicacion/equipo");
+}
 
 export interface UsuarioAdmin {
   id: string;
@@ -544,11 +1025,17 @@ export function getUsuarios() {
 }
 
 export function crearUsuario(data: CrearUsuarioInput) {
-  return request<UsuarioAdmin>("/admin/usuarios", { method: "POST", body: JSON.stringify(data) });
+  return request<UsuarioAdmin>("/admin/usuarios", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 }
 
 export function actualizarUsuario(id: string, data: ActualizarUsuarioInput) {
-  return request<UsuarioAdmin>(`/admin/usuarios/${id}`, { method: "PATCH", body: JSON.stringify(data) });
+  return request<UsuarioAdmin>(`/admin/usuarios/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(data),
+  });
 }
 
 export function resetearPassword(id: string, password: string) {
@@ -587,7 +1074,8 @@ export interface Instruccion {
   secretarias?: number;
 }
 
-export type ItemEstadoValidacion = "en_curso" | "pendiente_validacion" | "validado" | "devuelto";
+export type ItemEstadoValidacion =
+  "en_curso" | "pendiente_validacion" | "validado" | "devuelto";
 
 export interface InstruccionItem {
   id: string;
@@ -648,7 +1136,10 @@ export function emitirInstruccion(data: {
   fechaLimite?: string;
   clientToken?: string;
 }) {
-  return request<Instruccion>("/despacho/instrucciones", { method: "POST", body: JSON.stringify(data) });
+  return request<Instruccion>("/despacho/instrucciones", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
 }
 
 export function actualizarInstruccion(
@@ -681,12 +1172,18 @@ export function agregarItemInstruccion(
 }
 
 export function quitarItemInstruccion(id: string, itemId: string) {
-  return request<{ eliminado: boolean }>(`/despacho/instrucciones/${id}/items/${itemId}`, {
-    method: "DELETE",
-  });
+  return request<{ eliminado: boolean }>(
+    `/despacho/instrucciones/${id}/items/${itemId}`,
+    {
+      method: "DELETE",
+    },
+  );
 }
 
-export function marcarVistoInstruccion(id: string, tipo: "visto" | "acuse" = "visto") {
+export function marcarVistoInstruccion(
+  id: string,
+  tipo: "visto" | "acuse" = "visto",
+) {
   return request<{ ok: boolean }>(`/despacho/instrucciones/${id}/visto`, {
     method: "POST",
     body: JSON.stringify({ tipo }),
@@ -716,11 +1213,15 @@ export interface DespachoItemDeTarea {
 }
 
 export function getDespachoItemsPorTareas(tareaIds: string[]) {
-  if (tareaIds.length === 0) return Promise.resolve({} as Record<string, DespachoItemDeTarea>);
-  return request<Record<string, DespachoItemDeTarea>>("/despacho/items/por-tareas", {
-    method: "POST",
-    body: JSON.stringify({ tareaIds }),
-  });
+  if (tareaIds.length === 0)
+    return Promise.resolve({} as Record<string, DespachoItemDeTarea>);
+  return request<Record<string, DespachoItemDeTarea>>(
+    "/despacho/items/por-tareas",
+    {
+      method: "POST",
+      body: JSON.stringify({ tareaIds }),
+    },
+  );
 }
 
 export function solicitarValidacionItem(itemId: string) {
@@ -733,16 +1234,22 @@ export function solicitarValidacionItem(itemId: string) {
 }
 
 export function validarItem(instId: string, itemId: string) {
-  return request<InstruccionDetalle>(`/despacho/instrucciones/${instId}/items/${itemId}/validar`, {
-    method: "POST",
-  });
+  return request<InstruccionDetalle>(
+    `/despacho/instrucciones/${instId}/items/${itemId}/validar`,
+    {
+      method: "POST",
+    },
+  );
 }
 
 export function devolverItem(instId: string, itemId: string, motivo: string) {
-  return request<InstruccionDetalle>(`/despacho/instrucciones/${instId}/items/${itemId}/devolver`, {
-    method: "POST",
-    body: JSON.stringify({ motivo }),
-  });
+  return request<InstruccionDetalle>(
+    `/despacho/instrucciones/${instId}/items/${itemId}/devolver`,
+    {
+      method: "POST",
+      body: JSON.stringify({ motivo }),
+    },
+  );
 }
 
 // --- Evidencias ---
@@ -768,16 +1275,21 @@ export async function subirEvidencia(
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({ message: res.statusText }));
-    const message = Array.isArray(body.message) ? body.message.join(", ") : body.message;
+    const message = Array.isArray(body.message)
+      ? body.message.join(", ")
+      : body.message;
     throw new ApiError(message ?? "Error al subir la evidencia", res.status);
   }
   return res.json() as Promise<Evidencia>;
 }
 
 export async function descargarEvidencia(ev: Evidencia) {
-  const res = await fetch(`${API_URL}/despacho/items/evidencias/${ev.id}/descargar`, {
-    credentials: "include",
-  });
+  const res = await fetch(
+    `${API_URL}/despacho/items/evidencias/${ev.id}/descargar`,
+    {
+      credentials: "include",
+    },
+  );
   if (!res.ok) throw new ApiError("No se pudo descargar", res.status);
   const blob = await res.blob();
   const url = URL.createObjectURL(blob);
@@ -806,7 +1318,9 @@ export interface Notificacion {
 }
 
 export function getNotificaciones(soloNoLeidas = false) {
-  return request<Notificacion[]>(`/notificaciones${soloNoLeidas ? "?soloNoLeidas=true" : ""}`);
+  return request<Notificacion[]>(
+    `/notificaciones${soloNoLeidas ? "?soloNoLeidas=true" : ""}`,
+  );
 }
 
 export function getConteoNotificaciones() {
@@ -814,9 +1328,13 @@ export function getConteoNotificaciones() {
 }
 
 export function marcarNotificacionLeida(id: string) {
-  return request<{ ok: boolean }>(`/notificaciones/${id}/leida`, { method: "POST" });
+  return request<{ ok: boolean }>(`/notificaciones/${id}/leida`, {
+    method: "POST",
+  });
 }
 
 export function marcarTodasNotificacionesLeidas() {
-  return request<{ actualizadas: number }>("/notificaciones/leer-todas", { method: "POST" });
+  return request<{ actualizadas: number }>("/notificaciones/leer-todas", {
+    method: "POST",
+  });
 }
