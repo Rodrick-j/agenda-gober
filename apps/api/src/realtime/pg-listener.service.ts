@@ -25,6 +25,10 @@ interface CanalConfig {
   // Debe devolver como maximo 1 fila; RLS decide si hay fila o no segun el
   // contexto (rol/secretaria/usuario) ya seteado antes de correrla.
   query: string;
+  // Cuando una actualizacion puede quitar acceso a la fila (por ejemplo,
+  // retirar a alguien de un evento), el socket que ya no la ve necesita un
+  // tombstone para limpiar una copia que hubiera cargado previamente.
+  emitTombstoneWhenHidden?: boolean;
 }
 
 // Un canal por tabla con tiempo real. Agregar un modulo nuevo (Tareas,
@@ -40,12 +44,14 @@ const CANALES: Record<string, CanalConfig> = {
   eventos_cambios: {
     socketEvent: 'evento:cambio',
     payloadKey: 'evento',
+    emitTombstoneWhenHidden: true,
     // `estado` faltaba acá (encontrado al probar el recorrido de
     // solicitudes en tiempo real): sin él, un socket que recibe este
     // evento en vivo veía un objeto Evento con `estado` undefined --
     // ej. la píldora de estado del calendario quedaba mal pintada hasta el
     // próximo refresco manual, aunque el dato en la base ya fuera correcto.
-    query: `SELECT id, secretaria_id, tipo, titulo, descripcion, lugar, fecha_inicio, fecha_fin,
+    query: `SELECT id, secretaria_id, tipo, titulo, descripcion, lugar, organizacion_solicitante,
+                   fecha_inicio, fecha_fin,
                    nivel_confidencialidad, recordatorios_activos, estado, creado_por, created_at, updated_at
             FROM eventos_agenda WHERE id = $1`,
   },
@@ -291,6 +297,17 @@ export class PgListenerService implements OnModuleInit, OnModuleDestroy {
             socket.emit(canal.socketEvent, {
               accion: payload.accion,
               [canal.payloadKey]: rows[0],
+            });
+          } else if (
+            payload.accion === 'UPDATE' &&
+            canal.emitTombstoneWhenHidden
+          ) {
+            // La fila existia pero la RLS ya no la deja ver. El id aislado
+            // sigue el mismo contrato seguro usado para DELETE: no revela
+            // contenido y permite que quien la tenia cargada la retire.
+            socket.emit(canal.socketEvent, {
+              accion: 'DELETE',
+              id: payload.id,
             });
           }
         } catch (err) {
