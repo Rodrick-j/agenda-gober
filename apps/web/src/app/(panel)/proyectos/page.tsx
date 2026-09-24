@@ -15,9 +15,12 @@ import { useSession } from "@/lib/session-context";
 import { useRealtime } from "@/lib/realtime-context";
 import { rangoDeRol } from "@/lib/roles";
 import { InstitutionalIcon } from "@/components/InstitutionalIcon";
-import { Panel, PanelTitle } from "@/components/InstitutionalPanel";
+import { Panel } from "@/components/InstitutionalPanel";
 
 const ESTADOS: (ProyectoEstado | "todos")[] = ["todos", "planificacion", "en_ejecucion", "pausado", "finalizado", "cancelado"];
+
+const FORM_FIELD_CLASS =
+  "mt-2 w-full rounded-xl border border-slate-200 bg-[#f8fafc] px-3.5 py-2.5 text-sm font-medium text-[#183558] outline-none transition placeholder:text-slate-400 hover:border-slate-300 focus:border-[#0d5fc1] focus:bg-white focus:ring-4 focus:ring-[#0d5fc1]/10";
 
 const ESTADO_UI: Record<ProyectoEstado, { label: string; color: string; bar: string }> = {
   planificacion: { label: "Planificación", color: "bg-slate-100 text-slate-600", bar: "bg-slate-400" },
@@ -94,6 +97,7 @@ export default function ProyectosPage() {
   }
 
   function abrirNuevo() {
+    setError(null);
     setNombre("");
     setDescripcion("");
     setPresupuesto("");
@@ -102,6 +106,22 @@ export default function ProyectosPage() {
     setNivel("interna");
     setMostrarForm(true);
   }
+
+  useEffect(() => {
+    if (!mostrarForm) return;
+
+    const bodyOverflow = document.body.style.overflow;
+    const cerrarConEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !guardando) setMostrarForm(false);
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", cerrarConEscape);
+    return () => {
+      document.body.style.overflow = bodyOverflow;
+      window.removeEventListener("keydown", cerrarConEscape);
+    };
+  }, [guardando, mostrarForm]);
 
   async function onGuardar(e: FormEvent) {
     e.preventDefault();
@@ -272,91 +292,200 @@ export default function ProyectosPage() {
       )}
 
       {mostrarForm && (
-        <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/40 px-4" onClick={() => setMostrarForm(false)}>
-          <form onClick={(e) => e.stopPropagation()} onSubmit={onGuardar} className="w-full max-w-lg overflow-hidden rounded-2xl bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 bg-gradient-to-r from-rose-50 to-white px-5 py-3.5">
-              <h2 className="text-sm font-extrabold text-[#6f0b2b]">Nuevo proyecto</h2>
-              <button type="button" onClick={() => setMostrarForm(false)} className="text-slate-400 hover:text-slate-700">
-                <InstitutionalIcon name="chevronDown" className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="space-y-3 p-5">
-              <label className="block text-xs font-bold text-slate-700">
-                Nombre
-                <input
-                  value={nombre}
-                  onChange={(e) => setNombre(e.target.value)}
-                  required
-                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-normal outline-none transition focus:border-blue-400 focus:bg-white focus:ring-3 focus:ring-blue-100"
-                />
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="block text-xs font-bold text-slate-700">
-                  Inicio
-                  <input
-                    type="date"
-                    value={fechaInicio}
-                    onChange={(e) => setFechaInicio(e.target.value)}
-                    className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-normal outline-none transition focus:border-blue-400 focus:bg-white focus:ring-3 focus:ring-blue-100"
-                  />
-                </label>
-                <label className="block text-xs font-bold text-slate-700">
-                  Fin estimado
-                  <input
-                    type="date"
-                    value={fechaFinEstimada}
-                    onChange={(e) => setFechaFinEstimada(e.target.value)}
-                    className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-normal outline-none transition focus:border-blue-400 focus:bg-white focus:ring-3 focus:ring-blue-100"
-                  />
-                </label>
+        <div
+          className="fixed inset-0 z-50 overflow-y-auto bg-[#071b35]/70 px-3 py-4 backdrop-blur-[3px] sm:p-6"
+          onClick={() => !guardando && setMostrarForm(false)}
+        >
+          <div className="flex min-h-full items-center justify-center">
+            <form
+              aria-describedby="nuevo-proyecto-descripcion"
+              aria-labelledby="nuevo-proyecto-titulo"
+              aria-modal="true"
+              role="dialog"
+              onClick={(e) => e.stopPropagation()}
+              onSubmit={onGuardar}
+              className="project-dialog-enter flex max-h-[calc(100vh-2rem)] w-full max-w-2xl flex-col overflow-hidden rounded-[24px] border border-white/70 bg-white shadow-[0_28px_80px_-18px_rgba(2,34,79,0.55)] sm:max-h-[calc(100vh-3rem)]"
+            >
+              <div className="relative shrink-0 overflow-hidden bg-[linear-gradient(118deg,#02224f_0%,#043472_62%,#075da8_100%)] px-5 py-5 text-white sm:px-7 sm:py-6">
+                <div className="pointer-events-none absolute -right-16 -top-24 h-56 w-56 rounded-full border-[36px] border-white/5" />
+                <div className="pointer-events-none absolute bottom-0 right-28 h-px w-44 bg-gradient-to-r from-transparent via-[#37f0fc]/70 to-transparent" />
+                <div className="relative flex items-start gap-4">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/15 bg-white/10 shadow-inner shadow-white/10 backdrop-blur-sm sm:h-12 sm:w-12">
+                    <InstitutionalIcon name="folder" className="h-5 w-5 text-[#37f0fc] sm:h-6 sm:w-6" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="mb-1 text-[9px] font-extrabold uppercase tracking-[0.2em] text-[#7cc7f6]">Gestión de proyectos</p>
+                    <h2 id="nuevo-proyecto-titulo" className="text-lg font-black tracking-tight sm:text-xl">Registrar nuevo proyecto</h2>
+                    <p id="nuevo-proyecto-descripcion" className="mt-1 max-w-md text-[11px] leading-relaxed text-blue-100/75 sm:text-xs">
+                      Completa la información principal para iniciar su planificación y seguimiento.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setMostrarForm(false)}
+                    aria-label="Cerrar formulario"
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/15 bg-white/10 text-blue-100 transition hover:rotate-90 hover:border-white/30 hover:bg-white/20 hover:text-white focus:outline-none focus:ring-4 focus:ring-white/15"
+                  >
+                    <InstitutionalIcon name="close" className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
-              <label className="block text-xs font-bold text-slate-700">
-                Presupuesto (Bs)
-                <input
-                  type="number"
-                  min={0}
-                  value={presupuesto}
-                  onChange={(e) => setPresupuesto(e.target.value)}
-                  placeholder="Ej. 250000"
-                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-normal outline-none transition focus:border-blue-400 focus:bg-white focus:ring-3 focus:ring-blue-100"
-                />
-              </label>
-              <label className="block text-xs font-bold text-slate-700">
-                Confidencialidad
-                <select
-                  value={nivel}
-                  onChange={(e) => setNivel(e.target.value as NivelConfidencialidad)}
-                  className="mt-1.5 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-normal outline-none transition focus:border-blue-400 focus:bg-white focus:ring-3 focus:ring-blue-100"
-                >
-                  <option value="publica">Pública</option>
-                  <option value="interna">Interna</option>
-                  <option value="reservada">Reservada</option>
-                  <option value="confidencial">Confidencial</option>
-                </select>
-              </label>
-              <label className="block text-xs font-bold text-slate-700">
-                Descripción
-                <textarea
-                  value={descripcion}
-                  onChange={(e) => setDescripcion(e.target.value)}
-                  rows={3}
-                  className="mt-1.5 w-full resize-y rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5 text-sm font-normal leading-relaxed outline-none transition focus:border-blue-400 focus:bg-white focus:ring-3 focus:ring-blue-100"
-                />
-              </label>
-            </div>
-            <div className="flex justify-end gap-2 border-t border-slate-100 px-5 py-3.5">
-              <button type="button" onClick={() => setMostrarForm(false)} className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-bold text-slate-600 hover:bg-slate-50">
-                Cancelar
-              </button>
-              <button
-                type="submit"
-                disabled={guardando}
-                className="rounded-xl bg-[#0d5fc1] px-5 py-2 text-xs font-bold text-white shadow-md shadow-blue-200 transition hover:bg-[#094f9f] disabled:cursor-wait disabled:opacity-60"
-              >
-                {guardando ? "Guardando…" : "Crear proyecto"}
-              </button>
-            </div>
-          </form>
+
+              <div className="flex-1 space-y-4 overflow-y-auto bg-[#f4f7fb] p-4 sm:p-6">
+                {error && (
+                  <div role="alert" className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 px-3.5 py-3 text-xs font-semibold leading-relaxed text-red-700">
+                    <InstitutionalIcon name="shield" className="mt-0.5 h-4 w-4 shrink-0" />
+                    {error}
+                  </div>
+                )}
+
+                <section className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm shadow-slate-200/50 sm:p-5">
+                  <div className="mb-4 flex items-center gap-3 border-b border-slate-100 pb-3">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-[#0d5fc1]">
+                      <InstitutionalIcon name="document" className="h-4 w-4" />
+                    </span>
+                    <div>
+                      <h3 className="text-xs font-extrabold text-[#183558]">Información general</h3>
+                      <p className="mt-0.5 text-[10px] text-slate-400">Identifica el proyecto y define su alcance.</p>
+                    </div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <label htmlFor="proyecto-nombre" className="block text-xs font-bold text-slate-700">
+                      Nombre del proyecto <span className="text-[#8a1538]">*</span>
+                      <input
+                        id="proyecto-nombre"
+                        value={nombre}
+                        onChange={(e) => setNombre(e.target.value)}
+                        required
+                        maxLength={160}
+                        autoFocus
+                        placeholder="Ej. Mejoramiento vial zona norte"
+                        className={FORM_FIELD_CLASS}
+                      />
+                    </label>
+                    <label htmlFor="proyecto-descripcion" className="block text-xs font-bold text-slate-700">
+                      Descripción
+                      <textarea
+                        id="proyecto-descripcion"
+                        value={descripcion}
+                        onChange={(e) => setDescripcion(e.target.value)}
+                        rows={3}
+                        maxLength={1000}
+                        placeholder="Resume el objetivo, alcance y resultados esperados…"
+                        className={`${FORM_FIELD_CLASS} min-h-24 resize-y leading-relaxed`}
+                      />
+                      <span className="mt-1.5 block text-right text-[9px] font-medium text-slate-400">{descripcion.length}/1000</span>
+                    </label>
+                  </div>
+                </section>
+
+                <section className="rounded-2xl border border-slate-200/80 bg-white p-4 shadow-sm shadow-slate-200/50 sm:p-5">
+                  <div className="mb-4 flex items-center gap-3 border-b border-slate-100 pb-3">
+                    <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-blue-50 text-[#0d5fc1]">
+                      <InstitutionalIcon name="calendar" className="h-4 w-4" />
+                    </span>
+                    <div>
+                      <h3 className="text-xs font-extrabold text-[#183558]">Planificación y acceso</h3>
+                      <p className="mt-0.5 text-[10px] text-slate-400">Establece el periodo, recursos y visibilidad.</p>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <label htmlFor="proyecto-inicio" className="block text-xs font-bold text-slate-700">
+                      Fecha de inicio
+                      <input
+                        id="proyecto-inicio"
+                        type="date"
+                        value={fechaInicio}
+                        onChange={(e) => setFechaInicio(e.target.value)}
+                        className={FORM_FIELD_CLASS}
+                      />
+                    </label>
+                    <label htmlFor="proyecto-fin" className="block text-xs font-bold text-slate-700">
+                      Finalización estimada
+                      <input
+                        id="proyecto-fin"
+                        type="date"
+                        min={fechaInicio || undefined}
+                        value={fechaFinEstimada}
+                        onChange={(e) => setFechaFinEstimada(e.target.value)}
+                        className={FORM_FIELD_CLASS}
+                      />
+                    </label>
+                    <label htmlFor="proyecto-presupuesto" className="block text-xs font-bold text-slate-700">
+                      Presupuesto estimado
+                      <div className="relative">
+                        <span className="pointer-events-none absolute inset-y-0 left-3.5 flex items-center pt-2 text-xs font-extrabold text-slate-400">Bs</span>
+                        <input
+                          id="proyecto-presupuesto"
+                          type="number"
+                          min={0}
+                          step="0.01"
+                          value={presupuesto}
+                          onChange={(e) => setPresupuesto(e.target.value)}
+                          placeholder="250.000"
+                          className={`${FORM_FIELD_CLASS} pl-10`}
+                        />
+                      </div>
+                    </label>
+                    <label htmlFor="proyecto-confidencialidad" className="block text-xs font-bold text-slate-700">
+                      Nivel de confidencialidad
+                      <div className="relative">
+                        <InstitutionalIcon name="lock" className="pointer-events-none absolute left-3.5 top-[30px] h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <select
+                          id="proyecto-confidencialidad"
+                          value={nivel}
+                          onChange={(e) => setNivel(e.target.value as NivelConfidencialidad)}
+                          className={`${FORM_FIELD_CLASS} appearance-none pl-10 pr-10`}
+                        >
+                          <option value="publica">Pública</option>
+                          <option value="interna">Interna</option>
+                          <option value="reservada">Reservada</option>
+                          <option value="confidencial">Confidencial</option>
+                        </select>
+                        <InstitutionalIcon name="chevronDown" className="pointer-events-none absolute right-3.5 top-[30px] h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      </div>
+                    </label>
+                  </div>
+                </section>
+              </div>
+
+              <div className="flex shrink-0 flex-col-reverse gap-3 border-t border-slate-200 bg-white px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
+                <p className="flex items-center gap-2 text-[10px] font-medium text-slate-400">
+                  <InstitutionalIcon name="lock" className="h-3.5 w-3.5" />
+                  Los datos se guardan de forma segura.
+                </p>
+                <div className="flex items-center justify-end gap-2.5">
+                  <button
+                    type="button"
+                    onClick={() => setMostrarForm(false)}
+                    disabled={guardando}
+                    className="rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-extrabold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 focus:outline-none focus:ring-4 focus:ring-slate-100 disabled:opacity-50"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={guardando || !nombre.trim()}
+                    className="inline-flex min-w-36 items-center justify-center gap-2 rounded-xl bg-[linear-gradient(110deg,#0d5fc1,#087bd4)] px-5 py-2.5 text-xs font-extrabold text-white shadow-lg shadow-blue-900/20 transition hover:-translate-y-0.5 hover:shadow-xl hover:shadow-blue-900/25 focus:outline-none focus:ring-4 focus:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-55 disabled:hover:translate-y-0"
+                  >
+                    {guardando ? (
+                      <>
+                        <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/35 border-t-white" />
+                        Guardando…
+                      </>
+                    ) : (
+                      <>
+                        <InstitutionalIcon name="plus" className="h-4 w-4" />
+                        Crear proyecto
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
         </div>
       )}
     </div>

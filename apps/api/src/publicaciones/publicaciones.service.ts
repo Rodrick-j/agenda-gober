@@ -1,4 +1,9 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { TxService } from '../context/tx.service';
 import { mapPgError } from '../common/pg-error.util';
 import { limites, paginar } from '../common/paginacion';
@@ -14,7 +19,10 @@ export class PublicacionesService {
   async findAll(pagina?: string, porPagina?: string) {
     const lim = limites(pagina, porPagina);
     const { rows } = await this.tx.query(
-      `SELECT id, secretaria_id, titulo, contenido, nivel_confidencialidad, estado, created_at,
+      `SELECT id, secretaria_id, titulo, contenido, nivel_confidencialidad, estado,
+              motivo_rechazo, enviado_revision_at,
+              aprobado_por, aprobado_at, publicado_por, publicado_at,
+              created_at, updated_at,
               count(*) OVER() AS _total
        FROM publicaciones
        ORDER BY created_at DESC
@@ -37,7 +45,13 @@ export class PublicacionesService {
         `INSERT INTO publicaciones (secretaria_id, autor_id, titulo, contenido, nivel_confidencialidad)
          VALUES ($1, $2, $3, $4, $5)
          RETURNING id, secretaria_id, titulo, contenido, nivel_confidencialidad, estado, created_at`,
-        [secretariaId, userId, dto.titulo, dto.contenido, dto.nivelConfidencialidad],
+        [
+          secretariaId,
+          userId,
+          dto.titulo,
+          dto.contenido,
+          dto.nivelConfidencialidad,
+        ],
       );
       return rows[0];
     } catch (err) {
@@ -47,12 +61,27 @@ export class PublicacionesService {
     }
   }
 
-  async updateEstado(id: string, estado: EstadoPublicacion) {
+  async updateEstado(id: string, estado: EstadoPublicacion, motivo?: string) {
+    const motivoLimpio = motivo?.trim() || null;
+    // Devolver a borrador es un rechazo: el autor tiene que saber por qué.
+    if (estado === EstadoPublicacion.BORRADOR && !motivoLimpio) {
+      throw new BadRequestException(
+        'Indicá el motivo al devolver una publicación a borrador',
+      );
+    }
+
     try {
       const { rows } = await this.tx.query(
-        `UPDATE publicaciones SET estado = $1, updated_at = now() WHERE id = $2
-         RETURNING id, secretaria_id, titulo, contenido, nivel_confidencialidad, estado, created_at, updated_at`,
-        [estado, id],
+        `UPDATE publicaciones
+         SET estado = $1,
+             updated_at = now(),
+             motivo_rechazo = CASE WHEN $1 = 'borrador' THEN $3::text ELSE motivo_rechazo END
+         WHERE id = $2
+         RETURNING id, secretaria_id, titulo, contenido, nivel_confidencialidad, estado,
+                   motivo_rechazo, enviado_revision_at,
+                   aprobado_por, aprobado_at, publicado_por, publicado_at,
+                   created_at, updated_at`,
+        [estado, id, motivoLimpio],
       );
       if (rows.length === 0) {
         // Podría no existir, o existir mientras tu rol/secretaría no la

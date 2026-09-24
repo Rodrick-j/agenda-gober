@@ -26,6 +26,11 @@ FROM base AS runner
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3002
+# El server standalone de Next se bindea a $HOSTNAME, y Docker lo pone en el id
+# del contenedor por defecto -- entonces escucha solo en esa interfaz y el
+# HEALTHCHECK (que pega a 127.0.0.1) recibe connection-refused aunque la app
+# responda bien por el port-mapping. Forzar 0.0.0.0 lo hace escuchar en todas.
+ENV HOSTNAME=0.0.0.0
 USER node
 
 COPY --chown=node:node --from=build /app/public ./public

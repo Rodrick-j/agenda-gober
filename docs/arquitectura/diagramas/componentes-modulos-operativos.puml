@@ -1,0 +1,89 @@
+@startuml componentes-modulos-operativos
+title API — Componentes de los módulos operativos (trabajo diario de una secretaría)
+skinparam backgroundColor #FFFFFF
+skinparam component {
+  BackgroundColor #FEF9E7
+  BorderColor #7D6608
+}
+skinparam ArrowColor #34495E
+skinparam packageStyle rectangle
+
+package "context/" {
+  [TxService] as TxService
+}
+
+package "publicaciones/" {
+  [PublicacionesController\nGET/POST /publicaciones\nPATCH /publicaciones/:id/estado] as PubController
+  [PublicacionesService] as PubService
+  [PublicacionesSweepService\n@Cron cada hora] as PubSweep
+}
+
+package "documentos/" {
+  [DocumentosController\nsube/lista/descarga/borra] as DocController
+  [DocumentosService] as DocService
+}
+
+package "eventos/ (Agenda)" {
+  [EventosController\nGET/POST/PATCH/DELETE /eventos\nPUT /eventos/:id/responsables] as EvController
+  [EventosService] as EvService
+}
+
+package "reuniones/ (capa sobre eventos_agenda)" {
+  [ReunionesController\nacta] as ReunController
+  [CompromisosController\ncompromisos] as CompController
+  [ReunionesService] as ReunService
+}
+
+package "comunicacion/ (capa sobre eventos_agenda)" {
+  [ComunicacionController\nGET/POST /comunicacion\nGET /comunicacion/equipo\nPOST .../gabinete-visto] as ComController
+  [ComunicacionService] as ComService
+}
+
+package "tareas/" {
+  [TareasController\nGET/POST/PATCH/DELETE /tareas\nPUT /tareas/:id/asignados] as TarController
+  [TareasService] as TarService
+}
+
+package "proyectos/" {
+  [ProyectosController] as ProyController
+  [ProyectosService] as ProyService
+}
+
+database "PostgreSQL" as Db {
+}
+
+PubController --> PubService
+DocController --> DocService
+EvController --> EvService
+ReunController --> ReunService
+CompController --> ReunService
+ComController --> ComService
+TarController --> TarService
+ProyController --> ProyService
+
+PubService --> TxService
+DocService --> TxService
+EvService --> TxService
+ReunService --> TxService
+ComService --> TxService
+TarService --> TxService
+ProyService --> TxService
+
+TxService --> Db
+
+PubSweep --> Db : SELECT fn_publicaciones_sweep()\n(pool crudo + advisory lock,\nfuera del ciclo de un request HTTP)
+
+DocService ..> PubService : #FF0000;text:#FF0000 sin import directo\n(RLS de documentos usa EXISTS\ncontra publicaciones, no llama\na PublicacionesService)
+ReunService ..> EvService : #FF0000;text:#FF0000 sin import directo\n(reunion_actas/compromisos referencian\neventos_agenda por FK + función RLS,\nno por composición de servicios)
+ComService ..> EvService : #FF0000;text:#FF0000 sin import directo\n(cobertura.evento_id es la única\nconexión, a nivel de tabla)
+
+note bottom
+  Las flechas rojas punteadas marcan una relación de **datos**
+  (clave foránea + política RLS), no de **código**: ninguno de
+  estos servicios importa al otro. Es la misma idea que en
+  componentes-nucleo.puml — el acoplamiento entre módulos de
+  negocio es siempre vía Postgres (tablas + funciones
+  SECURITY DEFINER), nunca vía una llamada de un service a otro.
+end note
+
+@enduml

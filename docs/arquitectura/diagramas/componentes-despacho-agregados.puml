@@ -1,0 +1,98 @@
+@startuml componentes-despacho-agregados
+title API — Despacho, agregados de conducción y automatización
+skinparam backgroundColor #FFFFFF
+skinparam component {
+  BackgroundColor #EBF5EE
+  BorderColor #1E8449
+}
+skinparam ArrowColor #34495E
+skinparam packageStyle rectangle
+
+package "context/" {
+  [TxService] as TxService
+}
+
+package "despacho/ (2 controllers, 1 módulo)" {
+  [DespachoController\n/despacho/instrucciones/*] as DespController
+  [DespachoItemsController\n/despacho/items/*\n(item-scoped, lo usa el\nresponsable de la tarea)] as DespItemsController
+  [DespachoService] as DespService
+  [DespachoSweepService\n@Cron cada 10 min] as DespSweep
+}
+
+package "notificaciones/" {
+  [NotificacionesController\nGET lista/conteo, POST marcar leída] as NotifController
+  [NotificacionesService] as NotifService
+}
+
+package "pendientes/ ('Mi bandeja')" {
+  [PendientesController\nGET /pendientes] as PendController
+  [PendientesService\nagrega publicaciones+tareas+\ncompromisos+cobertura] as PendService
+}
+
+package "vencimientos/ (sin controller — solo job)" {
+  [VencimientosSweepService\n@Cron cada hora] as VencSweep
+}
+
+package "auditoria/" {
+  [AuditoriaController\nlista/resumen/detalle/export] as AudController
+  [AuditoriaService] as AudService
+}
+
+package "gabinete/" {
+  [GabineteController\nGET /gabinete/resumen] as GabController
+  [GabineteService\n(rollup, sin tabla propia)] as GabService
+}
+
+package "indicadores/" {
+  [IndicadoresController\nGET /indicadores/resumen] as IndController
+  [IndicadoresService\n(rollup, sin tabla propia)] as IndService
+}
+
+package "realtime/" {
+  [RealtimeGateway\nWebSocket, valida cookie\ndel handshake] as Gateway
+  [PgListenerService\nLISTEN de larga duración\n+ re-consulta por socket bajo RLS] as Listener
+}
+
+package "auth/ (solo para el gateway)" {
+  [AuthModule (JwtService)] as AuthMod
+}
+
+database "PostgreSQL\n(instrucciones, notificaciones,\nauditoria, y lectura del resto\npara los rollups)" as Db
+
+DespController --> DespService
+DespItemsController --> DespService
+DespService --> TxService
+DespSweep --> Db : SELECT fn_despacho_sweep()\n(pool crudo + advisory lock)
+
+NotifController --> NotifService
+NotifService --> TxService
+PendController --> PendService
+PendService --> TxService
+AudController --> AudService
+AudService --> TxService
+GabController --> GabService
+GabService --> TxService
+IndController --> IndService
+IndService --> TxService
+
+VencSweep --> Db : SELECT fn_vencimientos_sweep()\n(pool crudo + advisory lock)
+
+Gateway --> AuthMod : JwtService.verifyAsync()
+Gateway --> Db : relee sesión\n(pool crudo, igual que JwtStrategy)
+Listener --> Gateway : itera sockets autenticados
+Listener --> Db : LISTEN en 7 canales +\nre-SELECT por socket con\nset_config(rol,secretaria,user)
+
+PendService ..> DespService : #FF0000;text:#FF0000 sin import\n(lee cobertura/publicaciones/tareas\npor SQL propio, no delega)
+
+note bottom
+  Esta es la capa que cruza secretarías: todo lo de aquí es
+  transversal por diseño (solo gobernador/jefe_gabinete/admin,
+  salvo Pendientes e Indicadores que cada quien ve "su reflejo").
+  Los 3 @Cron (Despacho, Publicaciones -en el otro diagrama-,
+  Vencimientos) son el único código que corre SIN que haya un
+  usuario haciendo una petición HTTP — por eso usan el pool
+  crudo con un advisory lock, no TxService (que exige un
+  contexto de request que acá no existe).
+end note
+
+@enduml

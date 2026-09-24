@@ -1,0 +1,56 @@
+@startuml estados-cobertura
+title Estados — cobertura.estado (Comunicación)
+skinparam backgroundColor #FFFFFF
+skinparam state {
+  BackgroundColor #F4ECF7
+  BorderColor #6C3483
+}
+skinparam ArrowColor #34495E
+
+[*] --> solicitada : POST /comunicacion\n{eventoId}
+
+solicitada --> planificada : UNICOM planifica\n(PATCH estado)
+planificada --> en_produccion : UNICOM avanza\n(PATCH estado)
+en_produccion --> lista : UNICOM marca lista\n(PATCH estado)\n[dispara aviso a Gabinete]
+lista --> publicada : UNICOM marca publicada\n(PATCH estado)
+
+solicitada --> descartada : PATCH estado\n(sugerido por la UI)
+planificada --> descartada : PATCH estado\n(sugerido por la UI)
+en_produccion --> descartada : PATCH estado\n(sugerido por la UI)
+lista --> en_produccion : PATCH estado\n(sugerido por la UI,\n"todavía no está lista")
+
+note as NotaVisto
+  gabinete_visto_at es una COLUMNA aparte,
+  no un estado más: se pone con
+  POST .../gabinete-visto, solo la puede
+  setear un rol transversal (fn_cobertura_sello
+  lo exige con RAISE EXCEPTION si no).
+  Puede estar presente en cualquiera de los
+  estados de arriba.
+end note
+
+note left of solicitada
+  A DIFERENCIA de publicaciones.estado
+  (021_publicaciones_flujo.sql) y de
+  instruccion_items.estado_validacion
+  (016_despacho_validacion.sql), este
+  diagrama de estados NO está impuesto por
+  ningún trigger de base de datos: el
+  ActualizarCoberturaDto acepta cualquiera
+  de los 6 valores del enum vía
+  @IsEnum(CoberturaEstado), y la política
+  RLS cobertura_update solo exige el ROL
+  (unicom/transversal), sin comparar el
+  estado viejo contra el nuevo.
+  Las flechas de este diagrama son el
+  camino que la interfaz SUGIERE
+  (COBERTURA_SIGUIENTES en
+  apps/web/src/lib/comunicacion.ts) --
+  no una regla de negocio exigible.
+  Es la diferencia más notable entre este
+  módulo (el más nuevo del sistema) y el
+  resto: ver el hallazgo correspondiente
+  en 05-hallazgos-y-plan-de-mejoras.md.
+end note
+
+@enduml

@@ -13,7 +13,9 @@ export class SecretariasService {
   // vez de necesitar un directorio completo de usuarios.
   async miembros() {
     const { rol, secretariaId } = this.tx.currentUser;
-    const esTransversal = ['gobernador', 'jefe_gabinete', 'admin'].includes(rol);
+    const esTransversal = ['gobernador', 'jefe_gabinete', 'admin'].includes(
+      rol,
+    );
     const { rows } = await this.tx.query(
       esTransversal
         ? `SELECT id, nombre, email FROM usuarios WHERE activo = true ORDER BY nombre`

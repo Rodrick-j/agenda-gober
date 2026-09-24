@@ -1,0 +1,57 @@
+@startuml secuencia-rls-denegado
+title Secuencia — Dos formas de "no": denegado por defecto (404) vs. regla de negocio violada (403)
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #34495E
+skinparam participantBackgroundColor #FDEDEC
+
+actor "Usuario de\nsecretaría Obras" as UserObras
+participant "TenantContext\nInterceptor" as Interceptor
+participant "ProyectosController" as PCtrl
+participant "ProyectosService" as PSvc
+participant "TareasController" as TCtrl
+participant "TareasService" as TSvc
+database "PostgreSQL" as Db
+
+== Caso 1: leer un recurso de OTRA secretaría por id ==
+UserObras -> PCtrl : GET /proyectos/:id\n(el :id es de un proyecto de la secretaría Salud)
+PCtrl -> Interceptor : (ya pasó el guard de autenticación)
+Interceptor -> Db : set_config(rol='director', secretaria=Obras)
+PCtrl -> PSvc : obtener(id)
+PSvc -> Db : SELECT * FROM proyectos WHERE id=$1
+Db -> Db : política proyectos_select:\nsecretaria_id (Salud) <> app.current_secretaria_id (Obras)\ny el rol no es transversal -> la fila NO matchea
+Db --> PSvc : 0 filas\n(no es un error de SQL: la política\nsimplemente no la incluyó)
+PSvc --> PCtrl : throw NotFoundException\n("Proyecto no encontrado")
+PCtrl --> UserObras : 404
+
+note right of UserObras
+  A propósito es 404, no 403: el sistema
+  nunca confirma "existe pero no podés
+  verlo" -- ese es el mismo criterio en
+  Publicaciones, Documentos, Eventos,
+  Tareas y Auditoría (todos verificados
+  con curl según los comentarios del
+  propio código).
+end note
+
+== Caso 2: intentar romper una regla de negocio con una operación permitida a medias ==
+UserObras -> TCtrl : PATCH /tareas/:id\n{estado:'en_progreso', titulo:'nuevo título'}\n(la tarea SÍ está asignada a este usuario,\npero él no es director+ de la secretaría dueña)
+TCtrl -> TSvc : actualizar(id, dto)
+TSvc -> Db : UPDATE tareas SET estado=$1, titulo=$2 WHERE id=$3
+Db -> Db : política tareas_update: PASA\n(estar asignado alcanza para el UPDATE)
+Db -> Db : trigger fn_validar_edicion_tarea (BEFORE UPDATE):\n¿cambió algo además de "estado"? -> SÍ (titulo)\ny el rol no es director+/transversal\n-> RAISE EXCEPTION\n"Solo podés actualizar el estado de\nuna tarea asignada a vos"
+Db --> TSvc : error SQLSTATE P0001
+TSvc -> TSvc : mapPgError(err)\n P0001 -> ForbiddenException(mensaje del trigger)
+TSvc --> TCtrl : 403
+TCtrl --> UserObras : 403 "Solo podés actualizar\nel estado de una tarea asignada a vos"
+
+note right of UserObras
+  Toda la operación se rechaza -- NO se
+  aplica el cambio de estado "a medias"
+  aunque ese sí fuera válido, porque
+  ocurre dentro de la misma transacción
+  que abre TenantContextInterceptor:
+  si el trigger revienta, el interceptor
+  hace ROLLBACK de TODO el request.
+end note
+
+@enduml

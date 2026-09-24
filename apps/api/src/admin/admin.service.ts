@@ -1,11 +1,30 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { hashPassword } from '../common/password.util';
 import { limites, paginar } from '../common/paginacion';
 import { TxService } from '../context/tx.service';
-import { ActualizarUsuarioDto, CrearUsuarioDto, ResetPasswordDto, RolNombre } from './dto/usuario.dto';
-import { ActualizarSecretariaDto, CrearSecretariaDto } from './dto/secretaria.dto';
+import {
+  ActualizarUsuarioDto,
+  CrearUsuarioDto,
+  ResetPasswordDto,
+  RolNombre,
+} from './dto/usuario.dto';
+import {
+  ActualizarSecretariaDto,
+  CrearSecretariaDto,
+} from './dto/secretaria.dto';
 
-const ROLES_TRANSVERSALES = [RolNombre.GOBERNADOR, RolNombre.JEFE_GABINETE, RolNombre.ADMIN];
+const ROLES_TRANSVERSALES = [
+  RolNombre.GOBERNADOR,
+  RolNombre.JEFE_GABINETE,
+  RolNombre.ADMIN,
+  RolNombre.UNICOM,
+  RolNombre.APOYO,
+];
 
 const SELECT_FIELDS = `
   u.id, u.nombre, u.email, u.secretaria_id, s.nombre AS secretaria_nombre,
@@ -28,10 +47,14 @@ export class AdminService {
   private validarRolSecretaria(rol: RolNombre, secretariaId?: string) {
     const esTransversal = ROLES_TRANSVERSALES.includes(rol);
     if (esTransversal && secretariaId) {
-      throw new BadRequestException(`El rol "${rol}" es transversal, no puede asignarse a una secretaría`);
+      throw new BadRequestException(
+        `El rol "${rol}" es transversal, no puede asignarse a una secretaría`,
+      );
     }
     if (!esTransversal && !secretariaId) {
-      throw new BadRequestException(`El rol "${rol}" pertenece a una secretaría: falta indicar cuál`);
+      throw new BadRequestException(
+        `El rol "${rol}" pertenece a una secretaría: falta indicar cuál`,
+      );
     }
   }
 
@@ -53,7 +76,10 @@ export class AdminService {
   async crear(dto: CrearUsuarioDto) {
     this.validarRolSecretaria(dto.rol, dto.secretariaId);
 
-    const { rows: rolRows } = await this.tx.query(`SELECT id FROM roles WHERE nombre = $1`, [dto.rol]);
+    const { rows: rolRows } = await this.tx.query(
+      `SELECT id FROM roles WHERE nombre = $1`,
+      [dto.rol],
+    );
     if (rolRows.length === 0) throw new BadRequestException('Rol desconocido');
     const rolId = rolRows[0].id;
 
@@ -108,16 +134,28 @@ export class AdminService {
     // ej. un operador de Salud pasando a "gobernador" pero con
     // secretaria_id de Salud todavía puesto.
     if (dto.rol !== undefined || dto.secretariaId !== undefined) {
-      if (!dto.rol) throw new BadRequestException('Para cambiar de secretaría también indicá el rol');
+      if (!dto.rol)
+        throw new BadRequestException(
+          'Para cambiar de secretaría también indicá el rol',
+        );
       this.validarRolSecretaria(dto.rol, dto.secretariaId);
 
-      const { rows: rolRows } = await this.tx.query(`SELECT id FROM roles WHERE nombre = $1`, [dto.rol]);
-      if (rolRows.length === 0) throw new BadRequestException('Rol desconocido');
+      const { rows: rolRows } = await this.tx.query(
+        `SELECT id FROM roles WHERE nombre = $1`,
+        [dto.rol],
+      );
+      if (rolRows.length === 0)
+        throw new BadRequestException('Rol desconocido');
       const rolId = rolRows[0].id;
       const secretariaId = dto.secretariaId ?? null;
 
-      await this.tx.query(`UPDATE usuarios SET secretaria_id = $1 WHERE id = $2`, [secretariaId, id]);
-      await this.tx.query(`DELETE FROM usuario_roles WHERE usuario_id = $1`, [id]);
+      await this.tx.query(
+        `UPDATE usuarios SET secretaria_id = $1 WHERE id = $2`,
+        [secretariaId, id],
+      );
+      await this.tx.query(`DELETE FROM usuario_roles WHERE usuario_id = $1`, [
+        id,
+      ]);
       await this.tx.query(
         `INSERT INTO usuario_roles (usuario_id, rol_id, secretaria_id) VALUES ($1, $2, $3)`,
         [id, rolId, secretariaId],
@@ -139,7 +177,10 @@ export class AdminService {
     }
     if (campos.length > 0) {
       valores.push(id);
-      await this.tx.query(`UPDATE usuarios SET ${campos.join(', ')} WHERE id = $${i}`, valores);
+      await this.tx.query(
+        `UPDATE usuarios SET ${campos.join(', ')} WHERE id = $${i}`,
+        valores,
+      );
     }
 
     // Si lo desactivaron, cortarle todas las sesiones al instante.
@@ -151,7 +192,10 @@ export class AdminService {
   async resetPassword(id: string, dto: ResetPasswordDto) {
     await this.obtener(id);
     const passwordHash = await hashPassword(dto.password);
-    await this.tx.query(`UPDATE usuarios SET password_hash = $1 WHERE id = $2`, [passwordHash, id]);
+    await this.tx.query(
+      `UPDATE usuarios SET password_hash = $1 WHERE id = $2`,
+      [passwordHash, id],
+    );
     // Clave cambiada: se cierran las sesiones abiertas.
     await this.revocarSesiones(id);
     return { ok: true };
@@ -180,7 +224,9 @@ export class AdminService {
       return rows[0];
     } catch (err) {
       if ((err as { code?: string }).code === '23505') {
-        throw new ConflictException('Ya existe una secretaría con ese nombre o slug');
+        throw new ConflictException(
+          'Ya existe una secretaría con ese nombre o slug',
+        );
       }
       throw err;
     }
@@ -202,7 +248,8 @@ export class AdminService {
       campos.push(`activa = $${i++}`);
       valores.push(dto.activa);
     }
-    if (campos.length === 0) throw new BadRequestException('Nada para actualizar');
+    if (campos.length === 0)
+      throw new BadRequestException('Nada para actualizar');
 
     valores.push(id);
     try {
@@ -211,7 +258,8 @@ export class AdminService {
          RETURNING id, nombre, slug, descripcion, activa`,
         valores,
       );
-      if (rows.length === 0) throw new NotFoundException('Secretaría no encontrada');
+      if (rows.length === 0)
+        throw new NotFoundException('Secretaría no encontrada');
       return rows[0];
     } catch (err) {
       if (err instanceof NotFoundException) throw err;

@@ -1,0 +1,52 @@
+@startuml actividad-cobertura-comunicacion
+title Actividad — Solicitud y aprobación de cobertura de Comunicación (módulo v1)
+skinparam backgroundColor #FFFFFF
+skinparam ActivityBackgroundColor #F4ECF7
+skinparam ActivityBorderColor #6C3483
+skinparam ArrowColor #34495E
+
+|Secretaría (director+)|
+start
+:Crea/tiene un evento\nen la Agenda institucional;
+:Pide cobertura de comunicación\n(POST /comunicacion {eventoId});
+note right
+  Solo un director+ de la secretaría dueña del
+  evento, o directamente UNICOM, puede pedirla
+  (política cobertura_insert). Un mismo evento
+  solo admite una solicitud (evento_id es UNIQUE).
+end note
+
+|Sistema|
+:Notifica a todo\nel equipo UNICOM;
+
+|UNICOM|
+:Toma la solicitud,\nasigna comunicador,\ndefine tipo(s) de pieza\n(nota, redes, transmisión...)\ny el enfoque/línea de mensaje;
+:Avanza el estado\n(planificada -> en_producción);
+:Marca la cobertura\ncomo 'lista';
+
+|Sistema|
+:Notifica a Jefe de Gabinete\n(para el visto)\ny a quien la solicitó;
+
+|Jefe de Gabinete o Gobernador|
+if (¿Da el visto\na la línea de mensaje?) then (sí)
+  :POST .../gabinete-visto;
+  note right
+    Un trigger (fn_cobertura_sello), no una
+    política RLS, es quien impide que UNICOM
+    se dé el visto a sí mismo -- RLS ya lo dejaría
+    hacer UPDATE de la fila entera.
+  end note
+else (todavía no)
+  :Queda pendiente\nen "Mi bandeja"\nde Gabinete;
+  stop
+endif
+
+|Sistema|
+:Notifica al comunicador\ny al solicitante\nque el visto fue dado;
+
+|UNICOM|
+:Marca la cobertura\ncomo 'publicada'\n(opcionalmente enlazada\na la Publicación que salió);
+
+stop
+
+@enduml

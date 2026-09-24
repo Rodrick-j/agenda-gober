@@ -16,9 +16,11 @@ import { AuthService, type SesionMeta } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import type { AuthenticatedUser } from './jwt-payload';
 
-// access token: 15 min. refresh token: 30 días, y su cookie sólo se manda a
-// /auth/* (path acotado) para no exponerla en cada request.
-const ACCESS_MAX_AGE_MS = 15 * 60 * 1000;
+// access token: 60 min (ver auth.module.ts — la revocación no depende de este
+// TTL, se revalida contra la base en cada request). refresh token: 30 días,
+// y su cookie sólo se manda a /auth/* (path acotado) para no exponerla en
+// cada request.
+const ACCESS_MAX_AGE_MS = 60 * 60 * 1000;
 const REFRESH_MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000;
 
 function baseCookie() {
@@ -43,8 +45,14 @@ export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   private setTokens(res: Response, accessToken: string, refreshToken: string) {
-    res.cookie('access_token', accessToken, { ...accessCookie(), maxAge: ACCESS_MAX_AGE_MS });
-    res.cookie('refresh_token', refreshToken, { ...refreshCookie(), maxAge: REFRESH_MAX_AGE_MS });
+    res.cookie('access_token', accessToken, {
+      ...accessCookie(),
+      maxAge: ACCESS_MAX_AGE_MS,
+    });
+    res.cookie('refresh_token', refreshToken, {
+      ...refreshCookie(),
+      maxAge: REFRESH_MAX_AGE_MS,
+    });
   }
 
   private clearTokens(res: Response) {
@@ -56,8 +64,15 @@ export class AuthController {
   @HttpCode(200)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @Post('login')
-  async login(@Body() dto: LoginDto, @Req() req: Request, @Res({ passthrough: true }) res: Response) {
-    const { accessToken, refreshToken, user } = await this.auth.login(dto, metaDe(req));
+  async login(
+    @Body() dto: LoginDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { accessToken, refreshToken, user } = await this.auth.login(
+      dto,
+      metaDe(req),
+    );
     this.setTokens(res, accessToken, refreshToken);
     return { user };
   }
@@ -68,7 +83,10 @@ export class AuthController {
   @HttpCode(200)
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post('refresh')
-  async refresh(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+  async refresh(
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
     try {
       const { accessToken, refreshToken, user } = await this.auth.refresh(
         req.cookies?.refresh_token,
@@ -101,11 +119,17 @@ export class AuthController {
   @Get('sesiones')
   async sesiones(@Req() req: Request & { user: AuthenticatedUser }) {
     const lista = await this.auth.listarSesiones(req.user.userId);
-    return lista.map((s: { id: string }) => ({ ...s, actual: s.id === req.user.sid }));
+    return lista.map((s: { id: string }) => ({
+      ...s,
+      actual: s.id === req.user.sid,
+    }));
   }
 
   @Delete('sesiones/:id')
-  revocarSesion(@Param('id') id: string, @Req() req: Request & { user: AuthenticatedUser }) {
+  revocarSesion(
+    @Param('id') id: string,
+    @Req() req: Request & { user: AuthenticatedUser },
+  ) {
     return this.auth.revocarSesion(req.user.userId, id);
   }
 }

@@ -302,7 +302,11 @@ export default function ReunionesPage() {
                           </p>
                           <p className="mt-0.5 text-[10px] text-slate-400">
                             {c.responsable_nombre ?? "Sin responsable"}
-                            {c.fecha_limite ? ` · vence ${fechaCorta(c.fecha_limite)}` : ""}
+                            {c.estado === "cumplido" && c.cumplido_at
+                              ? ` · cumplido ${fechaCorta(c.cumplido_at)}`
+                              : c.fecha_limite
+                                ? ` · vence ${fechaCorta(c.fecha_limite)}`
+                                : ""}
                           </p>
                         </div>
                         {puedeEditarReunion && (

@@ -1,0 +1,73 @@
+@startuml secuencia-crear-publicacion-flujo-aprobacion
+title Secuencia — Publicación: crear y aprobar un comunicado (petición HTTP autenticada, capa por capa)
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #34495E
+skinparam participantBackgroundColor #FEF9E7
+
+actor "Operador\n(secretaría X)" as Operador
+actor "Director\n(secretaría X)" as Director
+participant "Next.js\n(InstitutionalDashboard)" as FE
+participant "JwtAuthGuard +\nJwtStrategy" as Guard
+participant "TenantContext\nInterceptor" as Interceptor
+participant "PublicacionesController" as Ctrl
+participant "PublicacionesService" as Svc
+database "PostgreSQL" as Db
+participant "fn_publicaciones_sello\n_transicion (trigger)" as TrgSello
+participant "fn_publicaciones_notify\n_estado (trigger, SECURITY DEFINER)" as TrgNotify
+
+== Crear (queda en 'borrador') ==
+Operador -> FE : completa título/contenido, guarda
+FE -> Ctrl : POST /publicaciones\n{titulo, contenido, nivelConfidencialidad}\n(secretariaId NUNCA viaja del cliente)
+Ctrl -> Svc : create(dto)
+Svc -> Db : INSERT INTO publicaciones\n(secretaria_id = <la del usuario autenticado>, ...)
+Db --> Svc : fila creada (estado='borrador')
+Svc --> FE : 201
+
+== Pedir revisión (autor mismo, cualquier rango) ==
+Operador -> FE : botón "Pedir revisión"
+FE -> Guard : PATCH /publicaciones/:id/estado\n{estado:'revision'}\ncookie access_token
+Guard -> Guard : verifica JWT + relee sesión\n(rol, secretaria_id ACTUALES)
+Guard -> Interceptor : req.user = {rol:'operador', secretariaId:X, ...}
+Interceptor -> Db : BEGIN;\nset_config(app.current_rol,'operador',true);\nset_config(app.current_secretaria_id,X,true);\nset_config(app.current_user_id,...,true)
+Interceptor -> Ctrl : continúa con el contexto ya seteado
+Ctrl -> Svc : updateEstado(id, 'revision')
+Svc -> Db : UPDATE publicaciones SET estado='revision' WHERE id=$1
+Db -> TrgSello : BEFORE UPDATE
+TrgSello -> TrgSello : NEW.enviado_revision_at = now();\nNEW.motivo_rechazo = NULL;\n(re-arma los contadores de SLA)
+Db -> Db : aplica política RLS de UPDATE\n(operador de la secretaría dueña: permitido)
+Db -> TrgNotify : AFTER UPDATE (estado cambió)
+TrgNotify -> Db : INSERT INTO notificaciones\n(destinatarios: director+secretario\nde la secretaría X)
+Db --> Svc : UPDATE ok
+Svc --> Ctrl : publicación actualizada
+Ctrl --> FE : 200
+Interceptor -> Db : COMMIT
+FE --> Operador : estado "revisión" en pantalla
+
+== Aprobar (requiere rango director+) ==
+Director -> FE : ve la notificación (campana, WebSocket),\nabre Publicaciones, botón "Aprobar"
+FE -> Ctrl : PATCH /publicaciones/:id/estado {estado:'aprobado'}
+Ctrl -> Svc : updateEstado(id, 'aprobado')
+Svc -> Db : UPDATE ... SET estado='aprobado'
+Db -> TrgSello : NEW.aprobado_por=director.id; NEW.aprobado_at=now()
+
+alt el rol NO alcanza rango director\n(ej. un operador intenta aprobar)
+  Db -> Db : fn_validar_transicion_publicacion\n(trigger de 005) -> RAISE EXCEPTION
+  Db --> Svc : error SQLSTATE P0001
+  Svc -> Svc : mapPgError() -> 403 Forbidden\n(con el mensaje del trigger)
+  Svc --> FE : 403
+else rango suficiente
+  Db -> TrgNotify : AFTER UPDATE\n(avisa al secretario: "lista para publicar")
+  Db --> Svc : ok
+  Svc --> FE : 200
+end
+
+note over TrgNotify, Db
+  Un job @Cron horario (PublicacionesSweepService) corre
+  fn_publicaciones_sweep(): si esta publicación queda "en
+  revisión" más de 48h sin que nadie la mueva, recordatorio;
+  a las 96h, escala al secretario + avisa al autor. Ver
+  diagramas/actividad-flujo-publicacion.puml para el proceso
+  completo con esa rama de tiempo incluida.
+end note
+
+@enduml

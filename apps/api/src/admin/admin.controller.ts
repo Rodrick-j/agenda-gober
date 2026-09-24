@@ -1,8 +1,21 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+  UseGuards,
+} from '@nestjs/common';
 import { RolesGuard } from '../common/roles.guard';
 import { Roles } from '../common/roles.decorator';
 import { AdminService } from './admin.service';
-import { ActualizarUsuarioDto, CrearUsuarioDto, ResetPasswordDto } from './dto/usuario.dto';
+import {
+  ActualizarUsuarioDto,
+  CrearUsuarioDto,
+  ResetPasswordDto,
+} from './dto/usuario.dto';
 
 // Único módulo del sistema donde el rol se chequea en el código (RolesGuard)
 // y no en una política RLS -- ver el comentario en roles.decorator.ts sobre
@@ -14,7 +27,10 @@ export class AdminController {
   constructor(private readonly service: AdminService) {}
 
   @Get()
-  listar(@Query('pagina') pagina?: string, @Query('porPagina') porPagina?: string) {
+  listar(
+    @Query('pagina') pagina?: string,
+    @Query('porPagina') porPagina?: string,
+  ) {
     return this.service.listar(pagina, porPagina);
   }
 

@@ -1,4 +1,8 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { TxService } from '../context/tx.service';
 import { mapPgError } from '../common/pg-error.util';
 import { limites, paginar } from '../common/paginacion';
@@ -7,7 +11,7 @@ import { UpdateTareaDto } from './dto/update-tarea.dto';
 
 const SELECT_FIELDS = `
   id, secretaria_id, titulo, descripcion, estado, prioridad, fecha_vencimiento,
-  nivel_confidencialidad, creado_por, created_at, updated_at
+  nivel_confidencialidad, creado_por, completada_at, created_at, updated_at
 `;
 
 // Trae los asignados agregados en la misma consulta (nada de N+1 por
@@ -18,7 +22,7 @@ const SELECT_FIELDS = `
 // documentado para los invitados de Agenda, no es un bug nuevo.
 const SELECT_CON_ASIGNADOS = `
   t.id, t.secretaria_id, t.titulo, t.descripcion, t.estado, t.prioridad, t.fecha_vencimiento,
-  t.nivel_confidencialidad, t.creado_por, t.created_at, t.updated_at,
+  t.nivel_confidencialidad, t.creado_por, t.completada_at, t.created_at, t.updated_at,
   COALESCE(
     (SELECT json_agg(json_build_object('id', u.id, 'nombre', u.nombre) ORDER BY u.nombre)
      FROM tarea_asignados ta JOIN usuarios u ON u.id = ta.usuario_id
@@ -46,7 +50,10 @@ export class TareasService {
   }
 
   async obtener(id: string) {
-    const { rows } = await this.tx.query(`SELECT ${SELECT_FIELDS} FROM tareas WHERE id = $1`, [id]);
+    const { rows } = await this.tx.query(
+      `SELECT ${SELECT_FIELDS} FROM tareas WHERE id = $1`,
+      [id],
+    );
     if (rows.length === 0) throw new NotFoundException('Tarea no encontrada');
 
     const { rows: asignados } = await this.tx.query(
@@ -60,7 +67,9 @@ export class TareasService {
 
   async crear(dto: CreateTareaDto) {
     const { userId, secretariaId, rol } = this.tx.currentUser;
-    const esTransversal = ['gobernador', 'jefe_gabinete', 'admin'].includes(rol);
+    const esTransversal = ['gobernador', 'jefe_gabinete', 'admin'].includes(
+      rol,
+    );
     if (!esTransversal && !secretariaId) {
       throw new ForbiddenException('Tu rol no está asociado a una secretaría');
     }
@@ -131,19 +140,38 @@ export class TareasService {
   }
 
   async eliminar(id: string) {
-    const { rowCount } = await this.tx.query(`DELETE FROM tareas WHERE id = $1`, [id]);
+    const { rowCount } = await this.tx.query(
+      `DELETE FROM tareas WHERE id = $1`,
+      [id],
+    );
     if (!rowCount) throw new NotFoundException('Tarea no encontrada');
     return { eliminado: true };
   }
 
   async reemplazarAsignados(tareaId: string, usuarioIds: string[]) {
+    const deseados = [...new Set(usuarioIds)];
     try {
-      await this.tx.query(`DELETE FROM tarea_asignados WHERE tarea_id = $1`, [tareaId]);
-      for (const usuarioId of usuarioIds) {
-        await this.tx.query(`INSERT INTO tarea_asignados (tarea_id, usuario_id) VALUES ($1, $2)`, [
-          tareaId,
-          usuarioId,
-        ]);
+      // Diff, no borrar-y-recrear: así trg_tarea_asignado_notify sólo avisa a
+      // los asignados NUEVOS, no a los que ya estaban en la tarea.
+      const { rows } = await this.tx.query<{ usuario_id: string }>(
+        `SELECT usuario_id FROM tarea_asignados WHERE tarea_id = $1`,
+        [tareaId],
+      );
+      const actuales = new Set(rows.map((r) => r.usuario_id));
+      const aQuitar = [...actuales].filter((u) => !deseados.includes(u));
+      const aAgregar = deseados.filter((u) => !actuales.has(u));
+
+      if (aQuitar.length) {
+        await this.tx.query(
+          `DELETE FROM tarea_asignados WHERE tarea_id = $1 AND usuario_id = ANY($2::uuid[])`,
+          [tareaId, aQuitar],
+        );
+      }
+      for (const usuarioId of aAgregar) {
+        await this.tx.query(
+          `INSERT INTO tarea_asignados (tarea_id, usuario_id) VALUES ($1, $2)`,
+          [tareaId, usuarioId],
+        );
       }
       return { actualizado: true };
     } catch (err) {

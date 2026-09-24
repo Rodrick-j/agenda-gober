@@ -1,12 +1,24 @@
-import { IsBoolean, IsEmail, IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsEmail,
+  IsEnum,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MaxLength,
+  MinLength,
+} from 'class-validator';
 
 export enum RolNombre {
   GOBERNADOR = 'gobernador',
   JEFE_GABINETE = 'jefe_gabinete',
   ADMIN = 'admin',
+  UNICOM = 'unicom',
   SECRETARIO = 'secretario',
   DIRECTOR = 'director',
   OPERADOR = 'operador',
+  APOYO = 'apoyo',
 }
 
 export class CrearUsuarioDto {

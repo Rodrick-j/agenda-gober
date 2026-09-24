@@ -1,0 +1,96 @@
+@startuml componentes-nucleo
+title API — Componentes del núcleo transversal (autenticación, contexto RLS, identidad)
+skinparam backgroundColor #FFFFFF
+skinparam component {
+  BackgroundColor #EAF2F8
+  BorderColor #2C3E50
+}
+skinparam ArrowColor #34495E
+skinparam packageStyle rectangle
+
+package "main.ts (bootstrap)" {
+  [helmet + cookieParser] as Middleware
+  [ValidationPipe global\n(whitelist, forbidNonWhitelisted)] as VPipe
+}
+
+package "auth/" {
+  [AuthController\nPOST /auth/login,refresh,logout\nGET /auth/me] as AuthController
+  [AuthService\nemitirSesion / refresh / revocar] as AuthService
+  [JwtStrategy\nvalida cookie + relee sesión en DB] as JwtStrategy
+  [JwtAuthGuard\n(global, salvo @Public)] as JwtAuthGuard
+}
+
+package "context/ (el más importante del backend)" {
+  [TenantContextInterceptor\n(global)\nBEGIN + set_config(rol,secretaria,user)] as Interceptor
+  [TxService\núnico punto de acceso a la DB\npor request] as TxService
+  [AsyncLocalStorage\n(request-context.ts)] as ALS
+}
+
+package "database/" {
+  [DatabaseModule\npg.Pool global] as DbModule
+}
+
+package "common/" {
+  [RolesGuard + @Roles()\n(única autorización por código,\nsolo /admin/*)] as RolesGuard
+  [paginacion.ts\nlimites() / paginar()] as Paginacion
+  [pg-error.util.ts\nmapPgError(): 42501/P0001 -> 403] as PgError
+}
+
+package "admin/ (usa RolesGuard, NO RLS)" {
+  [AdminController /admin/usuarios] as AdminController
+  [AdminSecretariasController /admin/secretarias] as AdminSecController
+  [AdminService] as AdminService
+}
+
+package "secretarias/ (sin RLS, catálogo público)" {
+  [SecretariasController\nGET /secretarias, /secretarias/miembros] as SecController
+}
+
+package "observability/" {
+  [request-id.middleware\nAsyncLocalStorage propio] as ReqId
+  [AppLogger\nprefija "req:xxxxxxxx" en cada log] as Logger
+  [GlobalExceptionFilter\nreporta 5xx a Sentry] as ExFilter
+}
+
+database "PostgreSQL\n(usuarios, usuario_roles,\nroles, secretarias, sesiones)" as Db
+
+Middleware --> JwtAuthGuard
+JwtAuthGuard --> JwtStrategy : delega verificación
+JwtStrategy --> DbModule : relee sesión\n(pool crudo, sin contexto RLS)
+AuthController --> AuthService
+AuthService --> DbModule : pool crudo\n(usuarios/usuario_roles/sesiones sin RLS)
+
+JwtAuthGuard --> Interceptor : si autenticado,\ncontinúa al interceptor
+Interceptor --> ALS : guarda el cliente\nde la transacción
+Interceptor --> DbModule : toma un cliente\ndel pool y hace BEGIN
+TxService --> ALS : lee el cliente\nde la request actual
+
+AdminController --> RolesGuard
+AdminSecController --> RolesGuard
+AdminController --> AdminService
+AdminSecController --> AdminService
+AdminService --> TxService
+SecController --> TxService
+
+VPipe .[#999999].> AuthController : valida DTOs de entrada\n(igual para todos los controllers)
+PgError <.. AdminService : traduce errores SQL
+Paginacion <.. AdminService : listar() paginado
+
+ReqId --> Logger : provee el id\npara prefijar
+ExFilter --> Logger
+
+TxService --> Db : SQL parametrizado,\ndentro de la transacción\ncon set_config ya aplicado
+
+note as N1
+  Todo módulo de negocio (Publicaciones, Tareas, Despacho...)
+  importa SOLO ContextModule para llegar a TxService — no hay
+  imports directos entre módulos de negocio en todo el código
+  (verificado: grep de imports en los 18 *.module.ts). El único
+  acoplamiento entre módulos de negocio es a través de las
+  tablas compartidas y los triggers de Postgres, no del código
+  TypeScript. La única excepción real es RealtimeModule, que sí
+  importa AuthModule (necesita JwtService para el handshake
+  de WebSocket).
+end note
+
+@enduml

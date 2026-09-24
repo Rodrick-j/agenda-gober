@@ -1,0 +1,58 @@
+@startuml estados-tarea-compromiso
+title Estados — tareas.estado y compromisos.estado
+skinparam backgroundColor #FFFFFF
+skinparam state {
+  BackgroundColor #FEF9E7
+  BorderColor #7D6608
+}
+skinparam ArrowColor #34495E
+
+state "Tarea" as TareaGroup {
+  [*] --> pendiente : POST /tareas
+  pendiente --> en_progreso
+  en_progreso --> completada
+  pendiente --> completada
+  completada --> en_progreso : reabrir
+  completada --> pendiente : reabrir
+  pendiente --> cancelada
+  en_progreso --> cancelada
+
+  note bottom of pendiente
+    NO hay trigger que imponga un orden entre estos 4
+    valores (a diferencia de publicaciones/instrucciones):
+    cualquier transición entre ellos es válida en cuanto
+    a "forma". Lo que SÍ está restringido es QUIÉN puede
+    tocar cada columna:
+    - el asignado sin rango director+ SOLO puede cambiar
+      "estado" (fn_validar_edicion_tarea bloquea cualquier
+      otro campo en el mismo PATCH);
+    - director+/transversal de la secretaría dueña edita
+      la fila completa.
+    Al entrar a 'completada': completada_at = now().
+    Al SALIR de 'completada', o si cambia
+    fecha_vencimiento: se limpian completada_at y los
+    marcadores de vencimiento (venc_recordado_at /
+    venc_vencida_at) -- el barrido horario los vuelve
+    a evaluar desde cero.
+  end note
+}
+
+state "Compromiso" as CompromisoGroup {
+  state "pendiente" as pendiente2
+  [*] --> pendiente2 : POST /eventos/:id/compromisos
+  pendiente2 --> cumplido
+  cumplido --> pendiente2 : reabrir
+
+  note bottom of pendiente2
+    Solo 2 estados. El responsable del compromiso puede
+    marcarlo cumplido aunque no tenga rango de director
+    ni pertenezca a la secretaría dueña de la reunión
+    (fn_validar_edicion_compromiso, mismo mecanismo que
+    en Tareas, limita al responsable a tocar solo estado).
+    Al entrar a 'cumplido': cumplido_at = now(); al salir,
+    o si cambia fecha_limite, se limpia junto con los
+    marcadores de vencimiento (mismo patrón que Tareas).
+  end note
+}
+
+@enduml

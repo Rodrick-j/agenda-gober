@@ -1,0 +1,35 @@
+@startuml estados-instruccion-item
+title Estados — instruccion_items.estado_validacion
+skinparam backgroundColor #FFFFFF
+skinparam state {
+  BackgroundColor #EBF5EE
+  BorderColor #1E8449
+}
+skinparam ArrowColor #34495E
+
+[*] --> en_curso : POST .../items\n(al agregar el ítem)
+
+en_curso --> pendiente_validacion : Responsable pide validación\n(POST .../solicitar-validacion)\n[exige >=1 evidencia adjunta,\nsi no: 403]
+
+pendiente_validacion --> validado : Jefe de Gabinete valida\n(POST .../items/:id/validar)
+pendiente_validacion --> devuelto : Jefe de Gabinete devuelve\n(POST .../items/:id/devolver)\n[motivo_devolucion OBLIGATORIO]
+
+devuelto --> pendiente_validacion : Responsable corrige\ny vuelve a pedir validación\n(misma regla: >=1 evidencia)
+
+validado : Pesa 100% en el promedio\nde avance de la instrucción,\nsin importar el estado real\nde la tarea/proyecto/evento.
+
+note left of en_curso
+  fn_validar_edicion_item (trigger) es quien limita
+  al Responsable a UN SOLO movimiento:
+  {en_curso, devuelto} -> pendiente_validacion.
+  Cualquier otro cambio que intente (peso, tipo,
+  ref_id, secretaria_id, o saltarse a 'validado')
+  se rechaza con RAISE EXCEPTION.
+  Un rol transversal (Gabinete/Gobernador/admin)
+  edita la fila completa sin esta restricción,
+  pero la API solo expone endpoints para llegar a
+  'validado' o 'devuelto' -- no hay una ruta que
+  mande el ítem de vuelta a 'en_curso' a mano.
+end note
+
+@enduml

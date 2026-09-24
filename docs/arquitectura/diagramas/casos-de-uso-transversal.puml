@@ -1,0 +1,84 @@
+@startuml casos-de-uso-transversal
+title Casos de uso — Roles transversales (UNICOM, Jefe de Gabinete, Gobernador, Administrador)
+skinparam backgroundColor #FFFFFF
+skinparam usecase {
+  BackgroundColor #EBF5EE
+  BorderColor #1E8449
+}
+skinparam ArrowColor #34495E
+left to right direction
+
+actor "UNICOM" as Unicom
+actor "Jefe de\nGabinete" as JG
+actor "Gobernador" as Gob
+actor "Súper\nAdministrador" as Admin
+
+rectangle "AGENDA.GOBER — conducción, comunicación y sistema" {
+  usecase "Ver calendario de cobertura\n(todos los eventos con cobertura pedida)" as UC1
+  usecase "Planificar cobertura\n(comunicador, tipo de pieza, enfoque)" as UC2
+  usecase "Dar el visto de Gabinete\na una cobertura" as UC3
+
+  usecase "Emitir instrucción de Despacho" as UC4
+  usecase "Tomar / organizar una instrucción\n(desglosarla en ítems)" as UC5
+  usecase "Validar / devolver un ítem" as UC6
+  usecase "Reabrir instrucción cerrada\n(con motivo obligatorio)" as UC7
+  usecase "Ver bitácora de una instrucción" as UC8
+
+  usecase "Ver panel de Gabinete\n(agregado de todas las secretarías)" as UC9
+  usecase "Ver Auditoría\n(filtros, resumen, export CSV)" as UC10
+  usecase "Ver / crear / editar cualquier\ncontenido de cualquier secretaría" as UC11
+
+  usecase "Alta / baja de usuario" as UC12
+  usecase "Cambiar rol o secretaría\nde un usuario" as UC13
+  usecase "Resetear contraseña" as UC14
+  usecase "Crear / editar secretaría" as UC15
+
+  usecase "Ver 'Mi bandeja'" as UC16
+}
+
+Unicom --> UC1
+Unicom --> UC2
+Unicom --> UC11 : #FF0000;text:#FF0000 solo eventos\nno-confidenciales
+Unicom --> UC16
+
+JG --> UC3
+JG --> UC5
+JG --> UC6
+JG --> UC8
+JG --> UC9
+JG --> UC10
+JG --> UC11
+JG --> UC16
+
+Gob --> UC3
+Gob --> UC4
+Gob --> UC7
+Gob --> UC8
+Gob --> UC9
+Gob --> UC10
+Gob --> UC11
+Gob --> UC16
+
+Admin --> UC12
+Admin --> UC13
+Admin --> UC14
+Admin --> UC15
+Admin --> UC16
+
+note bottom of UC11
+  División deliberada, verificada en ambos sentidos:
+  - Admin NO tiene este caso de uso: gestiona identidades
+    pero no ve contenido estratégico.
+  - Gobernador/Jefe de Gabinete NO tienen UC12-UC15: ven todo
+    el contenido pero no administran cuentas. apps/api/README.md
+    documenta la prueba con curl: gobernador@test.local contra
+    GET /admin/usuarios responde 403 (RolesGuard('admin') exige
+    el rol exacto "admin", ser transversal no alcanza).
+end note
+
+note bottom of UC7
+  Solo el Gobernador (chequeo explícito en
+  DespachoService.reabrir, no solo RLS) puede reabrir.
+end note
+
+@enduml

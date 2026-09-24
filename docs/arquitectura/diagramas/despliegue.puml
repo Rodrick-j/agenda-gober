@@ -1,0 +1,62 @@
+@startuml despliegue
+title Despliegue — topología real (Docker Compose local) + CI, sin CD a producción
+skinparam backgroundColor #FFFFFF
+skinparam nodeBackgroundColor #EAF2F8
+skinparam databaseBackgroundColor #D6EAF8
+skinparam ArrowColor #34495E
+
+node "Máquina host\n(Windows, Docker Desktop)" as Host {
+
+  node "docker-compose.full.yml\n(stack completo, un solo comando)" as StackFull {
+    node "agenda_gober_full_web\n[Contenedor Docker]\nNext.js standalone, Node 24-bookworm-slim\nHOSTNAME=0.0.0.0 (fix aplicado:\nsi no, el healthcheck falla)" as WebContainer
+    node "agenda_gober_full_api\n[Contenedor Docker]\nNestJS, Node 24-bookworm-slim\nusuario no-root 'node'" as ApiContainer
+    node "agenda_gober_full_migrate\n[Contenedor Docker, un solo disparo]\npsql: crea app_user + aplica\ndb/migrations/*.sql en orden" as MigrateContainer
+    database "agenda_gober_full_db\n[Contenedor Docker]\nPostgreSQL 16.4\nTLS autofirmado (PGSSLMODE=require)" as DbFull
+    folder "volumen\nagenda_gober_full_pgdata" as VolFull
+  }
+
+  node "docker-compose.yml\n(solo base de datos,\npara correr api/web con npm afuera)" as StackDev {
+    database "agenda_gober_db\n[Contenedor Docker]\nPostgreSQL 16.4" as DbDev
+    folder "volumen\nagenda_gober_pgdata" as VolDev
+  }
+
+  node "apps/api (npm run start:dev)\n[Proceso Node local, opcional]" as ApiLocal
+  node "apps/web (npm run dev)\n[Proceso Node local, opcional]" as WebLocal
+}
+
+actor "Desarrollador /\nUsuario (localhost)" as Dev
+
+cloud "Sentry\n(opcional, SENTRY_DSN)" as Sentry
+
+Dev --> WebContainer : http://127.0.0.1:8500\n(bindeado SOLO a localhost)
+Dev --> ApiContainer : http://127.0.0.1:3001\n(bindeado SOLO a localhost)
+WebContainer --> ApiContainer : NEXT_PUBLIC_API_URL\n(horneado en build-time)
+ApiContainer --> DbFull : DB_HOST=postgres\n(red interna de Docker Compose,\nno expuesta al host)
+MigrateContainer ..> DbFull : corre una vez,\nAPI espera a que termine OK\n(depends_on: service_completed_successfully)
+DbFull --> VolFull : persiste
+
+Dev --> ApiLocal : http://127.0.0.1:3001\n(alternativa sin Docker\npara api/web)
+Dev --> WebLocal : http://127.0.0.1:3002
+ApiLocal --> DbDev : 127.0.0.1:5433\n(único puerto de Postgres\nexpuesto al host, y solo a localhost)
+DbDev --> VolDev
+
+ApiContainer ..> Sentry : opcional
+WebContainer ..> Sentry : opcional
+ApiLocal ..> Sentry : opcional
+
+note bottom of StackFull
+  **[verificado]** Ningún puerto se publica en 0.0.0.0: los tres
+  "ports:" de docker-compose.full.yml usan 127.0.0.1:<puerto>:<puerto>
+  -- ni en la propia LAN del desarrollador queda expuesto. Confirmado
+  además por el pentest (nmap desde Kali contra el puerto de Postgres:
+  no alcanzable salvo desde el propio host).
+end note
+
+note right of Sentry
+  Único servicio externo de todo el sistema (ver
+  diagramas/c4-contexto.puml). Si SENTRY_DSN /
+  NEXT_PUBLIC_SENTRY_DSN están vacíos (valor por defecto),
+  el SDK queda desactivado y el sistema funciona idéntico.
+end note
+
+@enduml

@@ -8,7 +8,7 @@ import { InstitutionalIcon, type IconName } from "@/components/InstitutionalIcon
 import { InstitutionalMark } from "@/components/InstitutionalMark";
 import { rangoDeRol } from "@/lib/roles";
 
-interface NavItem {
+export interface NavItem {
   href?: string;
   label: string;
   icon: IconName;
@@ -19,12 +19,34 @@ interface NavItem {
   // a admin): ej. Despacho es solo gobernador + jefe_gabinete.
   roles?: string[];
   badge?: string;
+  // Quién es el dueño / principal usuario del módulo. Un solo nombre -> se
+  // muestra tal cual; dos o más -> "Compartido" (el detalle va en el tooltip).
+  //   GOB = Gobernador · GAB = Jefe de Gabinete · SG = Secretaría General
+  //   UNICOM = Unidad de Comunicación · SEC = las 10 secretarías
+  //   SDPD = Planificación del Desarrollo · SDAJ = Asuntos Jurídicos
+  //   TI = Tecnología / administración del sistema
+  usan?: string[];
 }
 
-interface NavSeccion {
+export interface NavSeccion {
   title: string;
   items: NavItem[];
 }
+
+// Nombre completo (tooltip) -> sigla corta (etiqueta en la barra).
+const SIGLA: Record<string, string> = {
+  "Todos": "TODOS",
+  "Secretarías": "SEC",
+  "Secretaría General": "SG",
+  "UNICOM": "UNICOM",
+  "Gabinete": "GAB",
+  "Gobernador": "GOB",
+  "Jefe de Gabinete": "JG",
+  "SDPD (Planificación)": "SDPD",
+  "SDAJ (Jurídicos)": "SDAJ",
+  "TI": "TI",
+  "TI / Administración": "TI",
+};
 
 // Secciones por AUDIENCIA, no por tipo de dato:
 //  - Trabajo diario: lo usa todo el mundo (cada quien ve lo suyo por RLS).
@@ -34,40 +56,57 @@ interface NavSeccion {
 //    admin -- paneles que cruzan todas las secretarías.
 //  - Sistema: solo admin.
 // Esto solo ordena qué se muestra; la barrera real es la RLS del backend.
-const SECCIONES: NavSeccion[] = [
+export const SECCIONES: NavSeccion[] = [
   {
     title: "Trabajo diario",
     items: [
-      { href: "/dashboard", label: "Inicio", icon: "home", description: "Resumen principal y estado del sistema" },
-      { href: "/agenda", label: "Agenda", icon: "calendar", description: "Calendario de actividades y compromisos" },
-      { href: "/reuniones", label: "Reuniones", icon: "users", description: "Actas y compromisos de reuniones" },
-      { href: "/tareas", label: "Tareas", icon: "tasks", description: "Pendientes propios y encargos recibidos" },
+      { href: "/dashboard", label: "Inicio", icon: "home", description: "Resumen principal y estado del sistema", usan: ["Todos"] },
+      { href: "/agenda", label: "Agenda", icon: "calendar", description: "Calendario de actividades y compromisos", usan: ["Secretarías", "Secretaría General", "UNICOM"] },
+      { href: "/mi-jornada", label: "Mi jornada", icon: "calendar", description: "Tu agenda confirmada, de solo lectura", roles: ["gobernador"], usan: ["Gobernador"] },
+      { href: "/reuniones", label: "Reuniones", icon: "users", description: "Actas y compromisos de reuniones", usan: ["Secretarías", "Secretaría General"] },
+      { href: "/tareas", label: "Tareas", icon: "tasks", description: "Pendientes propios y encargos recibidos", usan: ["Todos"] },
     ],
   },
   {
     title: "Gestión de mi área",
     items: [
-      { href: "/dashboard#publicaciones", label: "Publicaciones", icon: "megaphone", description: "Comunicados y documentos del área" },
-      { href: "/proyectos", label: "Proyectos", icon: "folder", description: "Obras y programas del área, con avance" },
-      { href: "/indicadores", label: "Indicadores", icon: "chart", description: "Métricas de gestión: tu área o el consolidado" },
+      { href: "/dashboard#publicaciones", label: "Publicaciones", icon: "megaphone", description: "Comunicados y documentos del área", usan: ["Secretarías", "UNICOM"] },
+      { href: "/comunicacion", label: "Comunicación", icon: "message", description: "Calendario de cobertura de eventos", roles: ["unicom", "gobernador", "jefe_gabinete", "admin"], usan: ["UNICOM", "Gabinete"] },
+      { href: "/proyectos", label: "Proyectos", icon: "folder", description: "Obras y programas del área, con avance", usan: ["Secretarías", "SDPD (Planificación)"] },
+      { href: "/indicadores", label: "Indicadores", icon: "chart", description: "Métricas de gestión: tu área o el consolidado", usan: ["Secretarías", "Gabinete", "SDPD (Planificación)"] },
     ],
   },
   {
     title: "Dirección institucional",
     items: [
-      { href: "/despacho", label: "Despacho", icon: "layers", description: "Instrucciones del Gobernador y su seguimiento", roles: ["gobernador", "jefe_gabinete"] },
-      { href: "/gabinete", label: "Gabinete", icon: "briefcase", description: "Estado agregado de todas las secretarías", soloTransversal: true },
-      { href: "/auditoria", label: "Auditoría", icon: "audit", description: "Registro de acciones y trazabilidad", soloTransversal: true },
-      { href: "/secretarias", label: "Secretarías", icon: "building", description: "Catálogo de dependencias", soloTransversal: true },
+      { href: "/despacho", label: "Despacho", icon: "layers", description: "Instrucciones del Gobernador y su seguimiento", roles: ["gobernador", "jefe_gabinete"], usan: ["Gobernador", "Jefe de Gabinete"] },
+      { href: "/gabinete", label: "Gabinete", icon: "briefcase", description: "Estado agregado de todas las secretarías", soloTransversal: true, usan: ["Gobernador", "Jefe de Gabinete"] },
+      { href: "/auditoria", label: "Auditoría", icon: "audit", description: "Registro de acciones y trazabilidad", soloTransversal: true, usan: ["Jefe de Gabinete", "SDAJ (Jurídicos)"] },
+      { href: "/secretarias", label: "Secretarías", icon: "building", description: "Catálogo de dependencias", soloTransversal: true, usan: ["Secretaría General", "TI"] },
     ],
   },
   {
     title: "Sistema",
     items: [
-      { href: "/admin/usuarios", label: "Usuarios", icon: "lock", description: "Control de accesos y permisos", soloAdmin: true },
+      { href: "/admin/usuarios", label: "Usuarios", icon: "lock", description: "Control de accesos y permisos", soloAdmin: true, usan: ["TI / Administración"] },
     ],
   },
 ];
+
+export function getNavigationSections(rol: string): NavSeccion[] {
+  const esTransversal = rangoDeRol(rol) >= 99;
+  const esAdmin = rol === "admin";
+
+  return SECCIONES.map((seccion) => ({
+    ...seccion,
+    items: seccion.items.filter(
+      (item) =>
+        (!item.soloTransversal || esTransversal) &&
+        (!item.soloAdmin || esAdmin) &&
+        (!item.roles || item.roles.includes(rol)),
+    ),
+  })).filter((seccion) => seccion.items.length > 0);
+}
 
 interface Props {
   rol: string;
@@ -80,36 +119,52 @@ function MenuGroup({ title, items, pathname, onNavigate }: { title: string; item
 
   return (
     <div className="shrink-0">
-      <p className="mb-2 px-4 text-[10px] font-bold uppercase tracking-[0.19em] text-[#7CC7F6]/70">{title}</p>
+      <p className="mb-2 px-4 text-[10px] font-bold uppercase tracking-[0.19em] text-[#86c7ef]/75">{title}</p>
       <div className="space-y-1">
         {items.map((item) => {
           const activo = Boolean(item.href && pathname === item.href.split("#")[0] && !item.href.includes("#"));
           const presionado = item.href === pressedHref;
+          const compartido = (item.usan?.length ?? 0) > 1;
+          const usanLabel = item.usan?.map((u) => SIGLA[u] ?? u).join(" · ") ?? null;
           const content = (
             <>
-              <span className="sidebar-nav-icon relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-all duration-300 group-hover:bg-[#06E5FA]/10 group-hover:text-[#37F0FC]">
+              <span className="sidebar-nav-icon relative z-10 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-all duration-300 group-hover:bg-white/[.06] group-hover:text-[#8ed9f8]">
                 <InstitutionalIcon name={item.icon} className="h-[18px] w-[18px]" />
               </span>
-              <span className="relative z-10 min-w-0 flex-1 truncate">{item.label}</span>
+              <span className="relative z-10 flex min-w-0 flex-1 flex-col leading-tight">
+                <span className="truncate">{item.label}</span>
+                {usanLabel && (
+                  <span
+                    className={`truncate text-[9px] font-semibold uppercase tracking-[0.08em] ${
+                      compartido ? "text-[#e9b54a]/85" : "text-[#7cc7f6]/55"
+                    }`}
+                  >
+                    {usanLabel}
+                  </span>
+                )}
+              </span>
               {item.badge && (
                 <span className="relative z-10 rounded-full border border-[#7CC7F6]/15 bg-[#043472]/60 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-[#9DA9BB]">{item.badge}</span>
               )}
-              {activo && <span className="relative z-10 h-1.5 w-1.5 rounded-full bg-[#06E5FA] shadow-[0_0_10px_rgba(6,229,250,.9)]" />}
+              {activo && <span className="relative z-10 h-1.5 w-1.5 rounded-full bg-[#65dff4] shadow-[0_0_10px_rgba(101,223,244,.8)]" />}
             </>
           );
+          const tooltip = [item.description, item.usan?.length ? `Usan: ${item.usan.join(" · ")}` : ""]
+            .filter(Boolean)
+            .join(" — ");
           const classes = `sidebar-nav-link group relative isolate flex w-full items-center gap-2 overflow-hidden rounded-xl px-3 py-2 text-left text-[13px] font-medium transition-all duration-300 active:scale-[.97] ${
             activo
-              ? "sidebar-nav-active border border-[#37F0FC]/25 bg-gradient-to-r from-[#0A70D6] to-[#0451A5] text-[#E3EAEF] shadow-[0_8px_24px_rgba(10,112,214,.28)]"
+              ? "sidebar-nav-active border border-[#65dff4]/25 bg-gradient-to-r from-[#0b65b5] to-[#084982] text-white shadow-[0_8px_24px_rgba(2,25,58,.34)]"
               : item.href
-                ? "border border-[#7CC7F6]/15 bg-[#02183A]/40 text-[#9DA9BB] hover:translate-x-1 hover:border-[#7CC7F6]/30 hover:bg-[#043472]/70 hover:text-[#E3EAEF]"
-                : "cursor-not-allowed border border-[#7CC7F6]/5 bg-[#02183A]/20 text-[#9DA9BB]/45"
+                ? "border border-white/[.07] bg-[#031b3b]/65 text-[#a9bbcf] hover:translate-x-1 hover:border-[#7cc7f6]/20 hover:bg-[#0a3766]/75 hover:text-white"
+                : "cursor-not-allowed border border-white/[.04] bg-[#02152f]/40 text-[#8294a8]/45"
           } ${presionado ? "sidebar-nav-pressed" : ""}`;
 
           return item.href ? (
             <Link
               key={item.label}
               href={item.href}
-              title={item.description}
+              title={tooltip}
               onPointerDown={() => setPressedHref(item.href ?? null)}
               onClick={onNavigate}
               onAnimationEnd={(event) => {
@@ -130,27 +185,18 @@ function MenuGroup({ title, items, pathname, onNavigate }: { title: string; item
 
 export function InstitutionalSidebar({ rol, onNavigate, onCollapse }: Props) {
   const pathname = usePathname();
-  const esTransversal = rangoDeRol(rol) >= 99;
-  const esAdmin = rol === "admin";
   // Filtra los items por rol y descarta las secciones que quedan vacías
   // (ej. un operador no ve "Dirección institucional" ni "Sistema").
-  const secciones = SECCIONES.map((seccion) => ({
-    ...seccion,
-    items: seccion.items.filter(
-      (item) =>
-        (!item.soloTransversal || esTransversal) &&
-        (!item.soloAdmin || esAdmin) &&
-        (!item.roles || item.roles.includes(rol)),
-    ),
-  })).filter((seccion) => seccion.items.length > 0);
+  const secciones = getNavigationSections(rol);
 
   return (
-    <nav aria-label="Navegación principal" className="institutional-sidebar relative flex h-full flex-col overflow-hidden border-r border-[#37F0FC]/15 bg-gradient-to-b from-[#02224F] via-[#043472]/60 to-[#01142F] text-[#E3EAEF]">
-      <div className="sidebar-brand relative flex min-h-[92px] shrink-0 items-center overflow-hidden border-b border-[#7CC7F6]/15 bg-gradient-to-br from-[#043472]/80 via-[#0451A5]/80 to-[#02224F]/80 px-3 backdrop-blur-sm">
-        <div className="absolute -right-8 -top-8 h-28 w-28 rounded-full border border-[#37F0FC]/15 bg-[#06E5FA]/[0.03]" />
-        <div className="absolute -right-2 top-8 h-16 w-16 rounded-full border border-[#E99D19]/20" />
-        <div className="relative flex w-[174px] items-center rounded-xl border border-white/70 bg-white/[.96] px-2.5 py-2 shadow-[0_8px_24px_rgba(1,20,47,.24)]">
-          <InstitutionalMark compact className="h-auto w-full" />
+    <nav aria-label="Navegación principal" className="institutional-sidebar relative flex h-full flex-col overflow-hidden border-r border-[#68c8ef]/15 text-[#E3EAEF]">
+      <div className="sidebar-brand relative flex min-h-[92px] shrink-0 items-center overflow-hidden border-b border-[#7CC7F6]/10 bg-gradient-to-br from-[#063b75] via-[#043166] to-[#021e45] px-3">
+        <div className="absolute -right-8 -top-8 h-28 w-28 rounded-full border border-[#65dff4]/10 bg-[#65dff4]/[0.025]" />
+        <div className="absolute -right-2 top-8 h-16 w-16 rounded-full border border-[#e99d19]/15" />
+        <div className="pointer-events-none absolute -left-8 top-1/2 h-28 w-56 -translate-y-1/2 rounded-full bg-[#7cc7f6]/[0.055] blur-2xl" />
+        <div className="relative ml-1 flex w-[174px] items-center py-2">
+          <InstitutionalMark compact className="sidebar-brand-logo h-auto w-full" />
         </div>
         {onCollapse && (
           <button
@@ -177,15 +223,16 @@ export function InstitutionalSidebar({ rol, onNavigate, onCollapse }: Props) {
         ))}
       </div>
 
-      <div className="sidebar-footer shrink-0 border-t border-[#7CC7F6]/10 bg-gradient-to-t from-[#01142F] to-transparent px-3 py-3">
-        <div className="sidebar-footer-brand relative mx-auto flex w-full max-w-[184px] items-center justify-center overflow-hidden rounded-xl border border-white/60 bg-white/[.94] px-2 py-1.5 shadow-[0_8px_24px_rgba(1,20,47,.3)]">
+      <div className="sidebar-footer shrink-0 border-t border-[#7CC7F6]/10 bg-gradient-to-t from-[#010d21] via-[#01152f] to-transparent px-3 py-3">
+        <div className="sidebar-footer-brand relative mx-auto flex w-full max-w-[184px] items-center justify-center px-2 py-1.5">
+          <div className="pointer-events-none absolute inset-x-3 top-1/2 h-12 -translate-y-1/2 rounded-full bg-[#7cc7f6]/[0.055] blur-xl" />
           <Image
             src="/images/marca_gobierno.png"
             alt="Marca Gobierno de Unidad"
             width={1500}
             height={700}
             sizes="168px"
-            className="h-auto w-full object-contain"
+            className="sidebar-footer-logo relative h-auto w-full object-contain"
           />
         </div>
 

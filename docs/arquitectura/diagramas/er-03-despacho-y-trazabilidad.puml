@@ -1,0 +1,153 @@
+@startuml er-03-despacho-y-trazabilidad
+title Entidad-Relación — Despacho (cadena de mando) y trazabilidad del sistema
+skinparam backgroundColor #FFFFFF
+skinparam linetype ortho
+hide circle
+skinparam class {
+  BackgroundColor #EBF5EE
+  BorderColor #1E8449
+}
+
+entity "usuarios" as usuarios {
+  * id : uuid <<PK>>
+  --
+  (ver er-01-identidad-organizacion)
+}
+
+entity "instrucciones" as instrucciones {
+  * id : uuid <<PK>>
+  --
+  titulo, objetivo : text
+  prioridad : enum (baja/media/alta/urgente)
+  fecha_limite : timestamptz (nullable)
+  estado : enum (emitida/en_organizacion/\nen_ejecucion/cumplida/observada/cancelada)
+  emitida_por : uuid <<FK>>
+  organiza_id : uuid <<FK>> (nullable)
+  avance_porcentaje : int <<calculada>>
+  en_riesgo : boolean <<calculada>>
+  client_token : uuid (nullable, unique)
+}
+note right of instrucciones
+  avance_porcentaje y en_riesgo
+  NUNCA se editan a mano: los
+  pisa fn_despacho_recalcular()
+  (SECURITY DEFINER), disparada
+  por triggers sobre los hijos.
+end note
+
+entity "instruccion_items" as instruccion_items {
+  * id : uuid <<PK>>
+  --
+  instruccion_id : uuid <<FK>>
+  tipo : enum (evento/tarea/proyecto/reunion)
+  ref_id : uuid  <<sin FK declarada>>
+  secretaria_id : uuid <<FK>> (nullable)
+  estado_validacion : enum (en_curso/\npendiente_validacion/validado/devuelto)
+  peso : smallint (1-5)
+  motivo_devolucion : text (nullable)
+  validado_por, validado_at : —
+  --
+  <<unique>> (instruccion_id, tipo, ref_id)
+}
+note right of instruccion_items
+  ref_id apunta a eventos_agenda,
+  tareas o proyectos SEGÚN el
+  valor de "tipo" -- Postgres no
+  tiene FK polimórfica, así que
+  no hay REFERENCES declarado acá;
+  la integridad la sostiene la
+  aplicación (ver er-02 para las
+  3 tablas destino posibles).
+end note
+
+entity "item_evidencias" as item_evidencias {
+  * id : uuid <<PK>>
+  --
+  item_id : uuid <<FK>>
+  tipo : enum (informe/foto/documento)
+  nombre_archivo, mime, tamano_bytes : —
+  contenido : bytea
+  nota : text (nullable)
+  subido_por : uuid <<FK>>
+}
+
+entity "instruccion_bitacora" as instruccion_bitacora {
+  * id : uuid <<PK>>
+  --
+  instruccion_id : uuid <<FK>>
+  actor_id : uuid <<FK>> (nullable = sistema)
+  accion : text
+  motivo : text (nullable)
+  datos : jsonb (nullable)
+  created_at : timestamptz
+}
+note right of instruccion_bitacora
+  Registro LEGIBLE ("emitida",
+  "validado", "reabierta"...).
+  Complementa, no reemplaza,
+  a "auditoria" (que guarda el
+  diff crudo de columnas).
+end note
+
+entity "vistos" as vistos {
+  * (entidad_tipo, entidad_id, usuario_id) <<PK>>
+  --
+  tipo : enum (visto/acuse)
+  notificado_at, abierto_at, acuse_at : timestamptz (nullable)
+}
+note right of vistos
+  entidad_tipo es texto libre,
+  no FK -- hoy solo 'instruccion',
+  diseñada para reusarse en otra
+  entidad sin migración nueva.
+end note
+
+entity "notificaciones" as notificaciones {
+  * id : uuid <<PK>>
+  --
+  usuario_id : uuid <<FK>>
+  tipo, titulo : text
+  cuerpo, enlace : text (nullable)
+  origen_tipo : text (nullable)
+  origen_id : uuid (nullable)
+  leida : boolean = false
+  leida_at : timestamptz (nullable)
+}
+note right of notificaciones
+  Única tabla del sistema con
+  RLS por usuario_id en vez de
+  por secretaria_id. Solo la
+  insertan funciones SECURITY
+  DEFINER (el usuario normal no
+  tiene GRANT INSERT).
+end note
+
+entity "auditoria" as auditoria {
+  * id : bigint <<PK, identity>>
+  --
+  usuario_id : uuid <<FK>> (nullable = sistema)
+  tabla : text
+  registro_id : uuid
+  accion : text (INSERT/UPDATE/DELETE)
+  datos_anteriores, datos_nuevos : jsonb (nullable)
+  created_at : timestamptz
+}
+note right of auditoria
+  Poblada por triggers AFTER
+  sobre ~15 tablas de todo el
+  sistema (no solo Despacho).
+  Solo INSERT: nunca se
+  actualiza ni se borra una fila.
+end note
+
+usuarios ||--o{ instrucciones : "emitida_por / organiza_id"
+instrucciones ||--o{ instruccion_items
+instruccion_items ||--o{ item_evidencias
+usuarios ||--o{ item_evidencias : subido_por
+instrucciones ||--o{ instruccion_bitacora
+usuarios ||--o{ instruccion_bitacora : actor_id
+usuarios ||--o{ vistos
+usuarios ||--o{ notificaciones
+usuarios ||--o{ auditoria : usuario_id
+
+@enduml

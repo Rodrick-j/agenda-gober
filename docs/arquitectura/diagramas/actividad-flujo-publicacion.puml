@@ -1,0 +1,45 @@
+@startuml actividad-flujo-publicacion
+title Actividad — Ciclo de vida de una Publicación, con rechazo y reintento
+skinparam backgroundColor #FFFFFF
+skinparam ActivityBackgroundColor #FEF9E7
+skinparam ActivityBorderColor #7D6608
+skinparam ArrowColor #34495E
+
+|Autor (cualquier rol de la secretaría)|
+start
+:Redacta borrador\n(POST /publicaciones);
+
+|Ciclo de revisión (Autor <-> Director/Secretario)|
+repeat :Autor pide revisión\n(PATCH estado='revision');
+  note right: notifica a director+secretario de la secretaría
+  :Director o Secretario evalúa\n(rango director+ requerido);
+  backward:Autor corrige el contenido\n(ve el motivo de rechazo\nen su tarjeta de publicación);
+repeat while (¿Rechaza?\n(motivo obligatorio,\nlimpia los sellos de SLA)) is (sí)
+->no, aprueba;
+
+|Director o Secretario|
+:Aprueba\n(PATCH estado='aprobado');
+note right: notifica al Secretario ("lista para publicar")
+
+|Secretario (único rol que publica)|
+:Publica\n(PATCH estado='publicado');
+note right: notifica al autor original
+
+|Sistema (barrido horario, en paralelo a todo lo anterior)|
+:fn_publicaciones_sweep();
+note right
+  No es un paso más del proceso: corre cada hora
+  independientemente de dónde esté la publicación.
+  - 'revisión' hace más de 48h -> recordatorio a
+    director+secretario
+  - 'revisión' hace más de 96h -> escala al secretario
+    + avisa al autor que sigue trabada
+  - 'aprobado' sin publicar hace más de 48h ->
+    recordatorio al secretario
+  Cada aviso sale una sola vez por transición
+  (marcador *_recordado_at / *_escalado_at).
+end note
+
+stop
+
+@enduml

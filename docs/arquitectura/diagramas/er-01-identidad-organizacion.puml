@@ -1,0 +1,99 @@
+@startuml er-01-identidad-organizacion
+title Entidad-Relación — Identidad y organización (quién es quién)
+skinparam backgroundColor #FFFFFF
+skinparam linetype ortho
+hide circle
+skinparam class {
+  BackgroundColor #EAF2F8
+  BorderColor #2C3E50
+}
+
+entity "secretarias" as secretarias {
+  * id : uuid <<PK>>
+  --
+  nombre : text
+  slug : text <<unique>>
+  descripcion : text
+  activa : boolean = true
+}
+note right of secretarias
+  Sin RLS: catálogo público
+  para cualquier autenticado.
+  Nunca se borra una fila
+  (014_secretarias_reales.sql
+  desactivó, no borró).
+end note
+
+entity "roles" as roles {
+  * id : uuid <<PK>>
+  --
+  nombre : text <<unique>>
+  ambito_secretaria : boolean
+}
+note right of roles
+  7 filas fijas: operador,
+  director, secretario, unicom,
+  jefe_gabinete, gobernador, admin.
+end note
+
+entity "usuarios" as usuarios {
+  * id : uuid <<PK>>
+  --
+  nombre : text
+  email : text <<unique>>
+  password_hash : text (nullable)
+  secretaria_id : uuid <<FK>> (nullable)
+  activo : boolean = true
+  created_at : timestamptz
+}
+note right of usuarios
+  Sin RLS (login la consulta
+  antes de que exista contexto
+  de sesión). Se desactiva,
+  nunca se borra.
+end note
+
+entity "usuario_roles" as usuario_roles {
+  * id : uuid <<PK>>
+  --
+  usuario_id : uuid <<FK>>
+  rol_id : uuid <<FK>>
+  secretaria_id : uuid <<FK>> (nullable)
+  --
+  <<unique>> (usuario_id, rol_id, secretaria_id)
+}
+note right of usuario_roles
+  PK propia (no compuesta):
+  una PK con secretaria_id
+  forzaría NOT NULL, y los
+  roles transversales la
+  necesitan en NULL (mig. 002).
+end note
+
+entity "sesiones" as sesiones {
+  * id : uuid <<PK>>
+  --
+  usuario_id : uuid <<FK>>
+  refresh_hash : text <<unique>>
+  user_agent : text
+  ip : text
+  creada_at : timestamptz
+  ultima_actividad : timestamptz
+  expira_at : timestamptz
+  revocada_at : timestamptz (nullable)
+}
+note right of sesiones
+  Sin RLS (se consulta
+  pre-contexto). refresh_hash
+  = SHA-256 del refresh token;
+  el token en claro nunca
+  se persiste.
+end note
+
+secretarias ||--o{ usuarios : "secretaria_id\n(NULL si transversal)"
+secretarias ||--o{ usuario_roles : "secretaria_id\n(NULL si transversal)"
+usuarios ||--o{ usuario_roles : usuario_id
+roles ||--o{ usuario_roles : rol_id
+usuarios ||--o{ sesiones : usuario_id
+
+@enduml

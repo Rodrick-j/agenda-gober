@@ -1,0 +1,54 @@
+@startuml estados-publicacion
+title Estados — publicaciones.estado
+skinparam backgroundColor #FFFFFF
+skinparam state {
+  BackgroundColor #FEF9E7
+  BorderColor #7D6608
+}
+skinparam ArrowColor #34495E
+
+[*] --> borrador : POST /publicaciones
+
+borrador --> revision : cualquier rol\nde la secretaría\n(pide revisión)
+revision --> aprobado : rango director+\n(aprueba)
+aprobado --> publicado : SOLO secretario\n(publica)
+
+revision --> borrador : rango director+,\nmotivo OBLIGATORIO\n(rechaza)
+aprobado --> borrador : rango director+,\nmotivo OBLIGATORIO\n(rechaza)
+
+publicado : Estado terminal en el uso normal.
+publicado : No hay transición de vuelta\ndocumentada para roles de secretaría.
+
+note left of borrador
+  fn_validar_transicion_publicacion (trigger,
+  005_permisos_finos.sql) es quien impone TODAS
+  estas flechas -- una transición fuera de esta
+  lista, para un rol de secretaría, revienta con
+  RAISE EXCEPTION (403).
+  Los roles transversales (gobernador,
+  jefe_gabinete, admin) pueden moverla a
+  CUALQUIER estado sin esta restricción.
+end note
+
+note right of revision
+  Al entrar: enviado_revision_at = now(),
+  motivo_rechazo = NULL (021/025).
+  Si pasan 48h sin salir de acá: recordatorio.
+  Si pasan 96h: escala + avisa al autor
+  (fn_publicaciones_sweep, cada hora).
+end note
+
+note right of aprobado
+  Al entrar: aprobado_por/aprobado_at sellados.
+  Si pasan 48h sin publicarse: recordatorio
+  al secretario (fn_publicaciones_sweep).
+end note
+
+note bottom of borrador
+  Al ENTRAR (por rechazo): se limpian
+  enviado_revision_at, aprobado_por/at,
+  publicado_por/at y los 3 marcadores de SLA
+  -- el siguiente ciclo arranca en cero.
+end note
+
+@enduml

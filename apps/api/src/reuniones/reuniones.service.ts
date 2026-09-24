@@ -6,7 +6,7 @@ import { CreateCompromisoDto, UpdateCompromisoDto } from './dto/compromiso.dto';
 
 const COMPROMISO_FIELDS = `
   c.id, c.evento_id, c.descripcion, c.responsable_id, c.fecha_limite, c.estado,
-  c.created_at, c.updated_at, u.nombre AS responsable_nombre
+  c.cumplido_at, c.created_at, c.updated_at, u.nombre AS responsable_nombre
 `;
 
 @Injectable()
@@ -57,8 +57,13 @@ export class ReunionesService {
       const { rows } = await this.tx.query(
         `INSERT INTO compromisos (evento_id, descripcion, responsable_id, fecha_limite)
          VALUES ($1, $2, $3, $4)
-         RETURNING id, evento_id, descripcion, responsable_id, fecha_limite, estado, created_at, updated_at`,
-        [eventoId, dto.descripcion, dto.responsableId ?? null, dto.fechaLimite ?? null],
+         RETURNING id, evento_id, descripcion, responsable_id, fecha_limite, estado, cumplido_at, created_at, updated_at`,
+        [
+          eventoId,
+          dto.descripcion,
+          dto.responsableId ?? null,
+          dto.fechaLimite ?? null,
+        ],
       );
       return rows[0];
     } catch (err) {
@@ -85,11 +90,12 @@ export class ReunionesService {
     }
     if (campos.length === 0) {
       const { rows } = await this.tx.query(
-        `SELECT id, evento_id, descripcion, responsable_id, fecha_limite, estado, created_at, updated_at
+        `SELECT id, evento_id, descripcion, responsable_id, fecha_limite, estado, cumplido_at, created_at, updated_at
          FROM compromisos WHERE id = $1`,
         [id],
       );
-      if (rows.length === 0) throw new NotFoundException('Compromiso no encontrado');
+      if (rows.length === 0)
+        throw new NotFoundException('Compromiso no encontrado');
       return rows[0];
     }
 
@@ -99,10 +105,11 @@ export class ReunionesService {
     try {
       const { rows } = await this.tx.query(
         `UPDATE compromisos SET ${campos.join(', ')} WHERE id = $${i}
-         RETURNING id, evento_id, descripcion, responsable_id, fecha_limite, estado, created_at, updated_at`,
+         RETURNING id, evento_id, descripcion, responsable_id, fecha_limite, estado, cumplido_at, created_at, updated_at`,
         valores,
       );
-      if (rows.length === 0) throw new NotFoundException('Compromiso no encontrado');
+      if (rows.length === 0)
+        throw new NotFoundException('Compromiso no encontrado');
       return rows[0];
     } catch (err) {
       if (err instanceof NotFoundException) throw err;
@@ -111,7 +118,10 @@ export class ReunionesService {
   }
 
   async eliminarCompromiso(id: string) {
-    const { rowCount } = await this.tx.query(`DELETE FROM compromisos WHERE id = $1`, [id]);
+    const { rowCount } = await this.tx.query(
+      `DELETE FROM compromisos WHERE id = $1`,
+      [id],
+    );
     if (!rowCount) throw new NotFoundException('Compromiso no encontrado');
     return { eliminado: true };
   }

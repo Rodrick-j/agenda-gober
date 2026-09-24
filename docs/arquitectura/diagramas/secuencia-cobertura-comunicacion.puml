@@ -1,0 +1,67 @@
+@startuml secuencia-cobertura-comunicacion
+title Secuencia — Comunicación: pedir cobertura, planificar y dar el visto de Gabinete
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #34495E
+skinparam participantBackgroundColor #F4ECF7
+
+actor "Director\n(secretaría X)" as Director
+actor UNICOM
+actor "Jefe de\nGabinete" as JG
+participant "ComunicacionController" as Ctrl
+participant "ComunicacionService" as Svc
+database "PostgreSQL" as Db
+participant "fn_cobertura_notify\n(SECURITY DEFINER)" as Notify
+participant "fn_cobertura_sello\n(trigger)" as Sello
+
+Director -> Ctrl : (desde Agenda) POST /comunicacion\n{eventoId}
+Ctrl -> Svc : pedir(eventoId)
+Svc -> Db : INSERT INTO cobertura (evento_id, solicitada_por)
+Db -> Db : política cobertura_insert:\n¿rango director+ de la secretaría dueña,\no rol unicom? -> sí, permitido
+alt el evento ya tenía una cobertura pedida
+  Db --> Svc : error 23505 (unique_violation en evento_id)
+  Svc --> Ctrl : 409 Conflict\n("Ese evento ya tiene una solicitud de cobertura")
+else primera solicitud para ese evento
+  Db --> Svc : fila creada (estado='solicitada')
+  Db -> Notify : AFTER INSERT
+  Notify -> Db : INSERT INTO notificaciones\n(destinatarios: todos los usuarios con rol unicom)
+  Svc --> Ctrl : 201
+end
+
+UNICOM -> Ctrl : (ve la notificación) abre /comunicacion,\nPATCH /comunicacion/:id\n{estado:'en_produccion', comunicadorId, tipoPieza, enfoque}
+Ctrl -> Svc : actualizar(id, dto)
+Svc -> Db : UPDATE cobertura SET ...
+Db -> Sello : BEFORE UPDATE\n(gabinete_visto_at no cambió -> no hace nada especial)
+Db --> Svc : ok
+
+UNICOM -> Ctrl : PATCH /comunicacion/:id {estado:'lista'}
+Ctrl -> Svc : actualizar(id, {estado:'lista'})
+Svc -> Db : UPDATE cobertura SET estado='lista'
+Db -> Notify : AFTER UPDATE (estado 'lista')
+Notify -> Db : INSERT INTO notificaciones\n(destinatarios: jefe_gabinete + el solicitante)
+
+alt UNICOM intenta dar el visto directamente\n(fuera de su alcance)
+  UNICOM -> Ctrl : POST /comunicacion/:id/gabinete-visto
+  Ctrl -> Svc : darVistoGabinete(id)
+  Svc -> Db : UPDATE cobertura SET gabinete_visto_at=now()
+  Db -> Sello : gabinete_visto_at cambió,\nrol actual = 'unicom' (no transversal)\n-> RAISE EXCEPTION\n"Sólo Gabinete puede dar el visto"
+  Db --> Svc : error P0001
+  Svc --> Ctrl : 403 Forbidden
+else Jefe de Gabinete lo hace
+  JG -> Ctrl : (ve la notificación) POST /comunicacion/:id/gabinete-visto
+  Ctrl -> Svc : darVistoGabinete(id)
+  Svc -> Db : UPDATE cobertura SET gabinete_visto_at=now()
+  Db -> Sello : rol='jefe_gabinete' -> permitido;\nNEW.gabinete_por = JG.id
+  Db -> Notify : AFTER UPDATE\n(gabinete_visto_at pasó de NULL a un valor)
+  Notify -> Db : INSERT INTO notificaciones\n(destinatarios: comunicador + solicitante)
+  Db --> Svc : ok
+  Svc --> Ctrl : 200
+end
+
+note over Svc, Db
+  Nótese: RLS (cobertura_update) permite a UNICOM hacer UPDATE
+  de la fila entera -- la restricción de "solo Gabinete pone el
+  visto" NO es una política RLS (RLS no distingue columnas
+  dentro de un mismo UPDATE), es el trigger fn_cobertura_sello.
+end note
+
+@enduml

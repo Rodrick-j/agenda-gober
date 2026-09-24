@@ -401,10 +401,17 @@ export default function TareasPage() {
                             Asignado a {t.asignados.map((a) => a.nombre).join(", ")}
                           </p>
                         )}
-                        {vence && (
-                          <p className={`mb-1.5 text-[10px] font-bold ${vence.vencida ? "text-red-600" : "text-slate-400"}`}>
-                            {vence.texto}
+                        {t.estado === "completada" && t.completada_at ? (
+                          <p className="mb-1.5 text-[10px] font-bold text-emerald-600">
+                            Completada{" "}
+                            {new Date(t.completada_at).toLocaleDateString("es-BO", { day: "numeric", month: "short" })}
                           </p>
+                        ) : (
+                          vence && (
+                            <p className={`mb-1.5 text-[10px] font-bold ${vence.vencida ? "text-red-600" : "text-slate-400"}`}>
+                              {vence.texto}
+                            </p>
+                          )
                         )}
                         {despacho[t.id] && (
                           <DespachoBloque

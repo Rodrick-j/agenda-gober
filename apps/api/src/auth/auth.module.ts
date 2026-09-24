@@ -14,9 +14,14 @@ import { JwtStrategy } from './jwt.strategy';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => ({
         secret: config.getOrThrow<string>('JWT_SECRET'),
-        // Access token corto: JwtStrategy.validate revalida la sesión contra
-        // la base en cada request, y el refresh token lo renueva sin fricción.
-        signOptions: { expiresIn: config.get<string>('JWT_ACCESS_TTL') ?? '15m' },
+        // JwtStrategy.validate revalida la sesión contra la base en CADA
+        // request (sesión viva + no revocada + usuario activo), así que
+        // desactivar a alguien o revocar su sesión lo corta al instante sin
+        // importar este TTL. Por eso 60 min: menos ciclos de refresh (y menos
+        // 401 intermedios en la consola del navegador) sin perder revocación.
+        signOptions: {
+          expiresIn: config.get<string>('JWT_ACCESS_TTL') ?? '60m',
+        },
       }),
     }),
   ],

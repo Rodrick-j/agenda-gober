@@ -1,0 +1,62 @@
+@startuml actividad-despacho-ciclo-instruccion
+title Actividad — Ciclo de vida de una Instrucción de Despacho
+skinparam backgroundColor #FFFFFF
+skinparam ActivityBackgroundColor #EBF5EE
+skinparam ActivityBorderColor #1E8449
+skinparam ArrowColor #34495E
+
+|Gobernador|
+start
+:Emite instrucción\n(POST /despacho/instrucciones,\ncon client_token anti-doble-clic);
+
+|Sistema|
+:Notifica a todos\nlos Jefes de Gabinete activos;
+
+|Jefe de Gabinete|
+:Toma la instrucción\n("organizarla",\nsolo si nadie más la tomó);
+:Agrega ítems\n(tareas nuevas, o eventos/\nproyectos existentes, con peso 1-5);
+
+|Sistema|
+:fn_despacho_recalcular()\n(dispara en cada alta/baja/cambio\nde un ítem o su fila referenciada);
+:Notifica al responsable de cada\ntarea (o al secretario de la\nsecretaría, si no se nombró a nadie);
+
+|Responsable en la secretaría|
+:Ejecuta el trabajo\n(tarea/proyecto/evento);
+:Sube evidencia\n(informe/foto/documento);
+
+|Ciclo de validación (Responsable <-> Jefe de Gabinete)|
+repeat :Responsable pide validación\n(exige >=1 evidencia adjunta,\nsi no -> rechazado con 403);
+  :Jefe de Gabinete revisa;
+  backward:Responsable corrige y\nvuelve a pedir validación\n(ve el motivo de devolución);
+repeat while (¿Devuelve?\n(motivo obligatorio)) is (sí)
+->no, valida;
+
+|Sistema|
+:fn_despacho_recalcular()\n(el ítem validado pesa 100%\nsin importar el estado real\nde la tarea/proyecto/evento);
+
+if (¿Todos los ítems\nquedaron 'validado'\n(o su tarea, 'cancelada')?) then (sí)
+  :Instrucción -> 'cumplida';
+  :Notifica al Gobernador\n(emitida_por)\n+ registra en bitácora;
+else (no, quedan pendientes)
+  :Instrucción -> 'en_ejecucion',\navance = promedio ponderado por peso;
+endif
+
+|Gobernador|
+if (¿Necesita reabrir\nuna instrucción cerrada?) then (sí, con motivo)
+  :Reabre\n(solo el Gobernador puede,\nchequeo explícito en el servicio,\nno solo RLS);
+  :Instrucción -> 'en_ejecucion'\nde nuevo;
+else (no)
+endif
+
+stop
+
+note right
+  En paralelo a todo esto, DespachoSweepService (cada 10 min)
+  corre fn_despacho_sweep(): recalcula instrucciones vencidas
+  sin cerrar, y aplica el SLA de acuse de recibo (recordatorio
+  a Jefes de Gabinete, luego escalamiento al Gobernador si nadie
+  "acusó" haber visto la instrucción emitida). Ver
+  diagramas/estados-instruccion.puml para el detalle de estados.
+end note
+
+@enduml

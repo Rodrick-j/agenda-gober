@@ -1,0 +1,157 @@
+@startuml er-02-contenido-institucional
+title Entidad-Relación — Contenido institucional (trabajo diario de una secretaría)
+skinparam backgroundColor #FFFFFF
+skinparam linetype ortho
+hide circle
+skinparam class {
+  BackgroundColor #FEF9E7
+  BorderColor #7D6608
+}
+
+entity "secretarias" as secretarias {
+  * id : uuid <<PK>>
+  --
+  (ver er-01-identidad-organizacion)
+}
+entity "usuarios" as usuarios {
+  * id : uuid <<PK>>
+  --
+  (ver er-01-identidad-organizacion)
+}
+
+entity "publicaciones" as publicaciones {
+  * id : uuid <<PK>>
+  --
+  secretaria_id : uuid <<FK>>
+  autor_id : uuid <<FK>>
+  titulo : text
+  contenido : text
+  nivel_confidencialidad : enum
+  estado : enum (borrador/revision/\naprobado/publicado)
+  motivo_rechazo : text (nullable)
+  enviado_revision_at, aprobado_por/at,\npublicado_por/at : (sello de flujo)
+  revision_recordada_at, revision_escalada_at,\npublicado_recordado_at : (SLA)
+}
+
+entity "documentos" as documentos {
+  * id : uuid <<PK>>
+  --
+  publicacion_id : uuid <<FK>>
+  nombre_archivo, mime, tamano_bytes : —
+  contenido : bytea
+  subido_por : uuid <<FK>>
+}
+
+entity "eventos_agenda" as eventos_agenda {
+  * id : uuid <<PK>>
+  --
+  secretaria_id : uuid <<FK>> (nullable = transversal)
+  titulo, descripcion, lugar : text
+  fecha_inicio, fecha_fin : timestamptz
+  nivel_confidencialidad : enum
+  creado_por : uuid <<FK>>
+}
+
+entity "evento_responsables" as evento_responsables {
+  * (evento_id, usuario_id) <<PK,FK>>
+}
+
+entity "reunion_actas" as reunion_actas {
+  * evento_id : uuid <<PK,FK>>
+  --
+  contenido : text
+  actualizado_por : uuid <<FK>>
+}
+note right of reunion_actas
+  PK = FK (1:1 con el evento).
+  Sin columna id -> tiene su
+  propia función de auditoría.
+end note
+
+entity "compromisos" as compromisos {
+  * id : uuid <<PK>>
+  --
+  evento_id : uuid <<FK>>
+  descripcion : text
+  responsable_id : uuid <<FK>> (nullable)
+  fecha_limite : timestamptz (nullable)
+  estado : enum (pendiente/cumplido)
+  cumplido_at, venc_recordado_at,\nvenc_vencida_at : —
+}
+
+entity "cobertura" as cobertura {
+  * id : uuid <<PK>>
+  --
+  evento_id : uuid <<FK,unique>>
+  estado : enum (solicitada/planificada/\nen_produccion/lista/publicada/descartada)
+  solicitada_por, comunicador_id,\ngabinete_por : uuid <<FK>>
+  tipo_pieza : text[]
+  enfoque : text
+  gabinete_visto_at : timestamptz (nullable)
+  publicacion_id : uuid <<FK>> (nullable)
+}
+note right of cobertura
+  1:1 con el evento (evento_id
+  es UNIQUE). Capa nueva
+  (migración 026) sobre
+  eventos_agenda, no una
+  tabla de eventos aparte.
+end note
+
+entity "tareas" as tareas {
+  * id : uuid <<PK>>
+  --
+  secretaria_id : uuid <<FK>> (nullable)
+  titulo, descripcion : text
+  estado : enum (pendiente/en_progreso/\ncompletada/cancelada)
+  prioridad : enum
+  fecha_vencimiento : timestamptz (nullable)
+  nivel_confidencialidad : enum
+  creado_por : uuid <<FK>>
+  completada_at, venc_recordado_at,\nvenc_vencida_at : —
+}
+
+entity "tarea_asignados" as tarea_asignados {
+  * (tarea_id, usuario_id) <<PK,FK>>
+}
+
+entity "proyectos" as proyectos {
+  * id : uuid <<PK>>
+  --
+  secretaria_id : uuid <<FK>> (nullable)
+  nombre, descripcion : text
+  estado : enum
+  avance_porcentaje : int (0-100)
+  presupuesto : numeric
+  fecha_inicio, fecha_fin_estimada : date
+  nivel_confidencialidad : enum
+  creado_por : uuid <<FK>>
+}
+
+secretarias ||--o{ publicaciones
+usuarios ||--o{ publicaciones : autor_id
+publicaciones ||--o{ documentos
+usuarios ||--o{ documentos : subido_por
+
+secretarias ||--o{ eventos_agenda
+usuarios ||--o{ eventos_agenda : creado_por
+eventos_agenda ||--o{ evento_responsables
+usuarios ||--o{ evento_responsables
+
+eventos_agenda ||--o| reunion_actas
+eventos_agenda ||--o{ compromisos
+usuarios ||--o{ compromisos : responsable_id
+
+eventos_agenda ||--o| cobertura
+usuarios ||--o{ cobertura : "solicitada_por /\ncomunicador_id / gabinete_por"
+publicaciones ||--o| cobertura : publicacion_id
+
+secretarias ||--o{ tareas
+usuarios ||--o{ tareas : creado_por
+tareas ||--o{ tarea_asignados
+usuarios ||--o{ tarea_asignados
+
+secretarias ||--o{ proyectos
+usuarios ||--o{ proyectos : creado_por
+
+@enduml

@@ -1,4 +1,11 @@
-import { IsBoolean, IsNotEmpty, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import {
+  IsBoolean,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+} from 'class-validator';
 
 export class CrearSecretariaDto {
   @IsString()
@@ -9,7 +16,9 @@ export class CrearSecretariaDto {
   @IsString()
   @IsNotEmpty()
   @MaxLength(40)
-  @Matches(/^[a-z0-9-]+$/, { message: 'slug solo puede tener minúsculas, números y guiones' })
+  @Matches(/^[a-z0-9-]+$/, {
+    message: 'slug solo puede tener minúsculas, números y guiones',
+  })
   slug: string;
 
   @IsOptional()

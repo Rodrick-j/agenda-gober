@@ -19,6 +19,7 @@ export type IconName =
   | "wifi"
   | "search"
   | "plus"
+  | "close"
   | "chevronLeft"
   | "chevronRight"
   | "chevronDown"
@@ -74,6 +75,8 @@ function IconPath({ name }: { name: IconName }) {
       return <><circle cx="11" cy="11" r="7" /><path strokeLinecap="round" d="m20 20-4-4" /></>;
     case "plus":
       return <path strokeLinecap="round" d="M12 5v14M5 12h14" />;
+    case "close":
+      return <path strokeLinecap="round" d="m6 6 12 12M18 6 6 18" />;
     case "chevronLeft":
       return <path strokeLinecap="round" strokeLinejoin="round" d="m15 18-6-6 6-6" />;
     case "chevronRight":

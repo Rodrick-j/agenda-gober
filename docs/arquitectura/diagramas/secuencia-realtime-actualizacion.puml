@@ -1,0 +1,50 @@
+@startuml secuencia-realtime-actualizacion
+title Secuencia — Propagación en tiempo real (ejemplo: dos secretarías, un cambio de publicaciones)
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #34495E
+skinparam participantBackgroundColor #EAF2F8
+
+actor "Usuario A\n(secretaría Salud,\nsocket conectado)" as UserA
+actor "Usuario B\n(secretaría Obras,\nsocket conectado)" as UserB
+participant "RealtimeGateway" as Gateway
+participant "PgListenerService\n(conexión LISTEN propia)" as Listener
+database "PostgreSQL" as Db
+participant "trg_notify_publicaciones" as Trigger
+
+== Conexión (una vez, al abrir el panel) ==
+UserA -> Gateway : io(API_URL, {withCredentials:true})
+Gateway -> Gateway : lee cookie access_token del handshake,\nverifica JWT, relee sesión en DB
+Gateway --> UserA : conectado (socket con\ndata.user = {rol:'secretario', secretariaId:Salud})
+
+UserB -> Gateway : io(API_URL, {withCredentials:true})
+Gateway --> UserB : conectado (data.user = {..., secretariaId:Obras})
+
+== Alguien de Salud actualiza una publicación (por HTTP, no por el socket) ==
+... otro usuario de Salud hace PATCH /publicaciones/:id/estado ...
+Db -> Trigger : AFTER UPDATE ON publicaciones
+Trigger -> Db : pg_notify('publicaciones_cambios',\n'{"id": "...", "accion": "UPDATE"}')\n(el payload NUNCA lleva el contenido de la fila)
+
+Db --> Listener : notificación en el canal\n(la conexión LISTEN la recibe async)
+
+Listener -> Listener : por cada socket autenticado conectado...
+
+Listener -> Db : (contexto de Usuario A) BEGIN;\nset_config(rol='secretario', secretaria=Salud);\nSELECT * FROM publicaciones WHERE id=$1
+Db --> Listener : la fila SÍ vuelve\n(RLS: es de su propia secretaría)
+Listener -> Gateway : emitir a socket de A
+Gateway -> UserA : evento "publicacion:cambio"\n{accion:'UPDATE', publicacion: {...}}
+UserA -> UserA : React actualiza la lista\nsin recargar la página
+
+Listener -> Db : (contexto de Usuario B) BEGIN;\nset_config(rol='secretario', secretaria=Obras);\nSELECT * FROM publicaciones WHERE id=$1
+Db --> Listener : 0 filas\n(RLS: no es de su secretaría\nni él es transversal)
+Listener -> Listener : no hay fila -> no se emite nada a B
+
+note over UserB
+  Usuario B nunca se entera de que
+  algo cambió: ni siquiera recibe
+  un evento vacío. El filtro de
+  tiempo real ES la política RLS,
+  no una copia de esa regla en
+  TypeScript.
+end note
+
+@enduml

@@ -62,7 +62,8 @@ export function validarEntorno<T extends Record<string, unknown>>(env: T): T {
   const problemas: string[] = [];
   const criticos: string[] = [];
 
-  const jwt = motivoDebil(process.env.JWT_SECRET, 32);
+  const jwtStr = (process.env.JWT_SECRET ?? env.JWT_SECRET) as string | undefined;
+  const jwt = motivoDebil(jwtStr, 32);
   if (jwt) {
     criticos.push(
       `JWT_SECRET ${jwt}. Generá uno con: bash scripts/gen-secrets.sh  (o node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))")`,
@@ -70,8 +71,9 @@ export function validarEntorno<T extends Record<string, unknown>>(env: T): T {
   }
 
   for (const clave of ['DB_PASSWORD', 'POSTGRES_PASSWORD', 'APP_DB_PASSWORD']) {
-    const m = motivoDebil(process.env[clave], 12);
-    if (process.env[clave] && m) (prod ? criticos : problemas).push(`${clave} ${m}`);
+    const valStr = (process.env[clave] ?? env[clave]) as string | undefined;
+    const m = motivoDebil(valStr, 12);
+    if (valStr && m) (prod ? criticos : problemas).push(`${clave} ${m}`);
   }
 
   if (criticos.length || problemas.length) {

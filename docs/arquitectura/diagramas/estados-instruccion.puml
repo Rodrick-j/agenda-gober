@@ -1,0 +1,57 @@
+@startuml estados-instruccion
+title Estados — instrucciones.estado (Despacho)
+skinparam backgroundColor #FFFFFF
+skinparam state {
+  BackgroundColor #EBF5EE
+  BorderColor #1E8449
+}
+skinparam ArrowColor #34495E
+
+[*] --> emitida : Gobernador emite\n(POST /despacho/instrucciones)
+
+emitida --> en_organizacion : Jefe de Gabinete "toma"\n(PATCH organizaId)\n[automático al tomar]
+
+en_organizacion --> en_ejecucion : fn_despacho_recalcular()\n[automático: hay >=1 ítem\ny no todos están cerrados]
+en_ejecucion --> en_ejecucion : fn_despacho_recalcular()\n[recalcula avance_porcentaje\nen cada cambio de un ítem]
+en_ejecucion --> cumplida : fn_despacho_recalcular()\n[automático: TODOS los ítems\n'validado' o su tarea 'cancelada']
+
+en_organizacion --> observada : PATCH {estado:'observada'}\n[manual, cualquier transversal]
+en_ejecucion --> observada : PATCH {estado:'observada'}\n[manual]
+en_organizacion --> cancelada : PATCH {estado:'cancelada'}\n[manual]
+en_ejecucion --> cancelada : PATCH {estado:'cancelada'}\n[manual]
+
+cumplida --> en_ejecucion : POST .../reabrir\n[SOLO Gobernador, motivo obligatorio]
+observada --> en_ejecucion : POST .../reabrir\n[SOLO Gobernador, motivo obligatorio]
+cancelada --> en_ejecucion : POST .../reabrir\n[SOLO Gobernador, motivo obligatorio]
+
+note left of emitida
+  El DTO de la API (UpdateInstruccionDto) solo
+  acepta 'observada'/'cancelada' como valores
+  manuales de estado -- un enum MÁS CHICO que el
+  tipo completo de la base de datos a propósito
+  (InstruccionEstadoManual). El resto de las
+  transiciones (las de la izquierda) las hace
+  fn_despacho_recalcular en cada cambio de un
+  ítem hijo o de la propia instrucción, nunca
+  un PATCH directo.
+end note
+
+note right of en_ejecucion
+  en_riesgo es un booleano APARTE del estado,
+  no un estado propio: se prende si algún ítem
+  hijo está vencido y sin cerrar, o si venció la
+  propia fecha_limite de la instrucción sin
+  estar cumplida/observada/cancelada. Dispara
+  una notificación al Gobernador la primera vez
+  que se prende (no se repite).
+end note
+
+note bottom of cumplida
+  observada/cancelada/cumplida son "terminales"
+  para fn_despacho_recalcular: una vez ahí, el
+  recálculo automático NO las vuelve a mover
+  aunque cambien los ítems -- solo /reabrir
+  (Gobernador) puede sacarla de ese estado.
+end note
+
+@enduml

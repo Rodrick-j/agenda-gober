@@ -1,0 +1,73 @@
+@startuml secuencia-despacho-emision-validacion
+title Secuencia — Despacho: emitir, desglosar, ejecutar y validar una instrucción
+skinparam backgroundColor #FFFFFF
+skinparam ArrowColor #34495E
+skinparam participantBackgroundColor #EBF5EE
+
+actor Gobernador
+actor "Jefe de\nGabinete" as JG
+actor "Responsable\n(en una secretaría)" as Resp
+participant "DespachoController" as Ctrl
+participant "DespachoService" as Svc
+database "PostgreSQL" as Db
+participant "fn_despacho_recalcular\n(SECURITY DEFINER)" as Recalc
+
+Gobernador -> Ctrl : POST /despacho/instrucciones\n{titulo, objetivo, prioridad, clientToken}
+Ctrl -> Svc : emitir(dto)
+Svc -> Db : INSERT INTO instrucciones (..., client_token)\nON CONFLICT DO NOTHING RETURNING *
+note right : client_token des-duplica\nun doble clic / reintento de red
+Db -> Db : trigger AFTER INSERT ->\nnotifica a TODOS los jefe_gabinete activos\n+ bitácora "emitida"
+Db --> Svc : instrucción (estado='emitida')
+Svc --> Ctrl : 201
+
+JG -> Ctrl : PATCH /despacho/instrucciones/:id\n{organizaId: JG.id}  ("Tomar")
+Ctrl -> Svc : actualizar(id, dto)
+Svc -> Db : UPDATE instrucciones SET organiza_id=$1\nWHERE id=$2 AND organiza_id IS NULL
+alt otra persona ya la tomó
+  Db --> Svc : 0 filas afectadas
+  Svc --> Ctrl : 409 Conflict ("Otra persona ya tomó esta instrucción")
+else nadie la había tomado
+  Db --> Svc : 1 fila (estado -> 'en_organizacion')
+  Svc -> Db : INSERT INTO instruccion_bitacora (accion='tomada')
+end
+
+JG -> Ctrl : POST /despacho/instrucciones/:id/items\n{tipo:'tarea', titulo, secretariaId, peso}
+Ctrl -> Svc : agregarItem(instruccionId, dto)
+Svc -> Db : INSERT INTO tareas (secretaria_id=NULL, ...)\nRETURNING id
+Svc -> Db : INSERT INTO tarea_asignados\n(a los secretario/director de esa secretaría,\nsi no se nombró a nadie puntual)
+Svc -> Db : INSERT INTO instruccion_items\n(instruccion_id, tipo='tarea', ref_id, peso)
+Db -> Db : trigger fn_despacho_sync_items:\nnotifica al/a los responsables\n+ bitácora "item_agregado"
+Db -> Recalc : PERFORM fn_despacho_recalcular(instruccion_id)
+Recalc -> Db : recalcula avance/riesgo/estado\n(hoy: 1 ítem 'en_curso' -> avance ~0%,\nestado sigue 'en_organizacion' o pasa\na 'en_ejecucion' según el resto)
+
+Resp -> Ctrl : (desde /tareas) marca su tarea\ny sube evidencia
+Ctrl -> Svc : subirEvidencia(itemId, archivo, meta)
+Svc -> Db : INSERT INTO item_evidencias (contenido bytea, ...)
+
+Resp -> Ctrl : POST /despacho/items/:itemId/solicitar-validacion
+Ctrl -> Svc : solicitarValidacion(itemId)
+Svc -> Db : UPDATE instruccion_items\nSET estado_validacion='pendiente_validacion'\nWHERE id=$1
+alt sin ninguna evidencia adjunta
+  Db -> Db : fn_validar_edicion_item (trigger) ->\nRAISE EXCEPTION "Adjuntá al menos\nuna evidencia antes de pedir la validación"
+  Db --> Svc : error P0001
+  Svc --> Ctrl : 403
+else con evidencia
+  Db --> Svc : ok
+  Db -> Db : trigger: notifica a organiza_id\n(o a todos los jefe_gabinete)\n+ bitácora "validacion_solicitada"
+  Db -> Recalc : recalcula (sin cambio de avance todavía:\n'pendiente_validacion' no suma 100%)
+end
+
+JG -> Ctrl : POST /despacho/instrucciones/:id/items/:itemId/validar
+Ctrl -> Svc : validarItem(instId, itemId)
+Svc -> Db : UPDATE instruccion_items\nSET estado_validacion='validado',\nvalidado_por=JG.id, validado_at=now()
+Db -> Db : trigger: bitácora "validado"
+Db -> Recalc : recalcula: este ítem ahora pesa 100%\nsin importar el estado real de la tarea
+
+alt todos los ítems quedaron 'validado'\n(o su tarea fue cancelada)
+  Recalc -> Db : UPDATE instrucciones SET estado='cumplida'
+  Recalc -> Db : INSERT INTO notificaciones\n(destinatario: emitida_por = Gobernador)\n+ bitácora "cumplida"
+else quedan ítems sin validar
+  Recalc -> Db : UPDATE instrucciones\nSET avance_porcentaje=<promedio ponderado>,\nestado='en_ejecucion'
+end
+
+@enduml

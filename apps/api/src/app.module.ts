@@ -10,6 +10,7 @@ import { DatabaseModule } from './database/database.module';
 import { TenantContextInterceptor } from './context/tenant-context.interceptor';
 import { PublicacionesModule } from './publicaciones/publicaciones.module';
 import { AuditoriaModule } from './auditoria/auditoria.module';
+import { PendientesModule } from './pendientes/pendientes.module';
 import { SecretariasModule } from './secretarias/secretarias.module';
 import { DocumentosModule } from './documentos/documentos.module';
 import { EventosModule } from './eventos/eventos.module';
@@ -18,7 +19,9 @@ import { GabineteModule } from './gabinete/gabinete.module';
 import { ProyectosModule } from './proyectos/proyectos.module';
 import { IndicadoresModule } from './indicadores/indicadores.module';
 import { ReunionesModule } from './reuniones/reuniones.module';
+import { ComunicacionModule } from './comunicacion/comunicacion.module';
 import { DespachoModule } from './despacho/despacho.module';
+import { VencimientosModule } from './vencimientos/vencimientos.module';
 import { NotificacionesModule } from './notificaciones/notificaciones.module';
 import { AdminModule } from './admin/admin.module';
 import { AuthModule } from './auth/auth.module';
@@ -36,6 +39,7 @@ import { HealthController } from './health.controller';
     AuthModule,
     PublicacionesModule,
     AuditoriaModule,
+    PendientesModule,
     SecretariasModule,
     DocumentosModule,
     EventosModule,
@@ -44,7 +48,9 @@ import { HealthController } from './health.controller';
     ProyectosModule,
     IndicadoresModule,
     ReunionesModule,
+    ComunicacionModule,
     DespachoModule,
+    VencimientosModule,
     NotificacionesModule,
     AdminModule,
     RealtimeModule,

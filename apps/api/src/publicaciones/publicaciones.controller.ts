@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { PublicacionesService } from './publicaciones.service';
 import { CreatePublicacionDto } from './dto/create-publicacion.dto';
 import { UpdateEstadoDto } from './dto/update-estado.dto';
@@ -8,7 +16,10 @@ export class PublicacionesController {
   constructor(private readonly service: PublicacionesService) {}
 
   @Get()
-  findAll(@Query('pagina') pagina?: string, @Query('porPagina') porPagina?: string) {
+  findAll(
+    @Query('pagina') pagina?: string,
+    @Query('porPagina') porPagina?: string,
+  ) {
     return this.service.findAll(pagina, porPagina);
   }
 
@@ -19,6 +30,6 @@ export class PublicacionesController {
 
   @Patch(':id/estado')
   updateEstado(@Param('id') id: string, @Body() dto: UpdateEstadoDto) {
-    return this.service.updateEstado(id, dto.estado);
+    return this.service.updateEstado(id, dto.estado, dto.motivo);
   }
 }

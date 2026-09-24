@@ -1,0 +1,69 @@
+@startuml secuencia-login
+title Secuencia — Login, emisión de sesión, y refresco automático de token
+skinparam backgroundColor #FFFFFF
+skinparam sequenceMessageAlign center
+skinparam ArrowColor #34495E
+skinparam participantBackgroundColor #EAF2F8
+
+actor Usuario
+participant "InstitutionalLogin.tsx\n(Next.js)" as FE
+participant "AuthController" as Ctrl
+participant "AuthService" as Svc
+database "PostgreSQL\n(usuarios, usuario_roles,\nroles, sesiones — SIN RLS)" as Db
+
+Usuario -> FE : ingresa email + contraseña
+FE -> FE : email.trim().toLowerCase()
+FE -> Ctrl : POST /auth/login\n{ email, password }\n(credentials: include)
+Ctrl -> Svc : login(dto, {userAgent, ip})
+
+Svc -> Db : SELECT u.*, r.nombre\nFROM usuarios u JOIN usuario_roles ur JOIN roles r\nWHERE lower(email)=lower($1) AND activo=true
+Db --> Svc : fila (o ninguna)
+
+alt no existe el usuario, o está inactivo
+  Svc --> Ctrl : throw UnauthorizedException\n("Credenciales inválidas")
+  Ctrl --> FE : 401
+  FE --> Usuario : "Credenciales inválidas"\n(mismo mensaje en ambos casos:\nno se revela si el email existe)
+else existe
+  Svc -> Svc : verifyPassword(password, password_hash)\n(bcrypt)
+  alt contraseña incorrecta
+    Svc --> Ctrl : throw UnauthorizedException\n("Credenciales inválidas")
+    Ctrl --> FE : 401
+  else contraseña correcta
+    Svc -> Svc : emitirSesion(usuario)
+    Svc -> Db : INSERT INTO sesiones\n(usuario_id, refresh_hash=SHA256(token),\nexpira_at = now()+30d)\nRETURNING id
+    Db --> Svc : sesion.id
+    Svc -> Svc : accessToken = JWT.sign({sub: usuario.id, sid: sesion.id})\n(60 min)
+    Svc --> Ctrl : { accessToken, refreshToken, user }
+    Ctrl -> Ctrl : set-cookie access_token\n(httpOnly, 60 min, path=/)\nset-cookie refresh_token\n(httpOnly, 30 días, path=/auth)
+    Ctrl --> FE : 200 { user: {userId,email,rol,secretariaId} }
+    FE -> FE : SessionProvider guarda "user"\n(NO hay token que decodificar:\nno hay nada legible por JS)
+    FE -> Usuario : redirige a /dashboard
+  end
+end
+
+== 60 minutos después: el access_token venció ==
+
+Usuario -> FE : navega a cualquier página del panel
+FE -> Ctrl : GET /publicaciones (u otro endpoint)\ncookie access_token vencida
+Ctrl --> FE : 401 Unauthorized
+FE -> FE : intentarRefresh()\n(single-flight: si ya hay uno\nen vuelo, reusa la misma promesa)
+FE -> Ctrl : POST /auth/refresh\ncookie refresh_token (30 días)
+Ctrl -> Svc : refresh(rawRefreshToken)
+Svc -> Db : SELECT * FROM sesiones\nWHERE refresh_hash=SHA256(token)\nAND revocada_at IS NULL AND expira_at > now()
+Db --> Svc : sesión viva
+Svc -> Db : UPDATE sesiones\nSET refresh_hash = SHA256(nuevoToken)\n(rotación: el token usado deja de servir)
+Svc --> Ctrl : nuevo accessToken + nuevo refreshToken
+Ctrl -> Ctrl : set-cookie (ambas, renovadas)
+Ctrl --> FE : 200
+FE -> Ctrl : reintenta el request original\n(una sola vez)
+Ctrl --> FE : 200 (ahora sí)
+
+note over Svc, Db
+  JwtStrategy.validate() (en cada request normal) hace la MISMA
+  consulta que el paso de arriba, pero por sesión (sid) + usuario:
+  relee rol/secretaría ACTUALES en cada request — un cambio de
+  rol o una desactivación cortan el acceso en la siguiente
+  petición, no cuando venza el JWT.
+end note
+
+@enduml

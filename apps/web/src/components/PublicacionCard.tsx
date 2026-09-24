@@ -45,7 +45,7 @@ function Badge({ texto, clase }: { texto: string; clase: string }) {
 interface Props {
   publicacion: Publicacion;
   rol: string;
-  onTransicion: (id: string, estado: EstadoPublicacion) => void;
+  onTransicion: (id: string, estado: EstadoPublicacion, motivo?: string) => void;
 }
 
 export function PublicacionCard({ publicacion, rol, onTransicion }: Props) {
@@ -67,12 +67,26 @@ export function PublicacionCard({ publicacion, rol, onTransicion }: Props) {
       <p className="mb-4 line-clamp-5 flex-1 whitespace-pre-wrap text-xs leading-relaxed text-slate-600">
         {publicacion.contenido}
       </p>
+      {publicacion.estado === "borrador" && publicacion.motivo_rechazo && (
+        <p className="mb-3 rounded-lg bg-rose-50 px-3 py-2 text-[11px] leading-relaxed text-[#7d092a] ring-1 ring-inset ring-rose-100">
+          <span className="font-bold">Devuelta: </span>
+          {publicacion.motivo_rechazo}
+        </p>
+      )}
       {acciones.length > 0 && (
         <div className="flex flex-wrap gap-2 border-t border-slate-100 pt-3">
           {acciones.map((a) => (
             <button
               key={a.estado}
-              onClick={() => onTransicion(publicacion.id, a.estado)}
+              onClick={() => {
+                if (a.estado === "borrador") {
+                  const motivo = window.prompt("Motivo del rechazo (se le avisa al autor):");
+                  if (!motivo || motivo.trim().length < 4) return;
+                  onTransicion(publicacion.id, a.estado, motivo.trim());
+                } else {
+                  onTransicion(publicacion.id, a.estado);
+                }
+              }}
               className={
                 a.primaria
                   ? "rounded-lg bg-[#0d5fc1] px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-[#094f9f]"

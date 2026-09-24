@@ -1,0 +1,40 @@
+@startuml c4-contexto
+title AGENDA.GOBER — Diagrama de contexto (C4 nivel 1)
+skinparam backgroundColor #FFFFFF
+skinparam actorStyle awesome
+skinparam rectangle {
+  RoundCorner 12
+  BorderColor #2C3E50
+}
+skinparam ArrowColor #34495E
+
+left to right direction
+
+actor "Operador / Director /\nSecretario\n[Persona]\nPersonal de una secretaría" as PersonaSecretaria
+actor "UNICOM\n[Persona]\nUnidad de Comunicación" as PersonaUnicom
+actor "Jefe de Gabinete\n[Persona]" as PersonaJefeGabinete
+actor "Gobernador\n[Persona]" as PersonaGobernador
+actor "Súper Administrador\n[Persona]\nGestiona cuentas y secretarías" as PersonaAdmin
+
+rectangle "AGENDA.GOBER\n[Sistema de software]\n\nGestión y coordinación institucional:\npublicaciones, agenda, tareas, proyectos,\ndespacho de instrucciones y comunicación,\ncon aislamiento de datos por secretaría\nimpuesto en la base de datos (RLS)." as Sistema
+
+cloud "Sentry\n[Sistema externo — opcional]\nMonitoreo de errores y trazas.\nApagado si no hay SENTRY_DSN." as Sentry
+
+PersonaSecretaria --> Sistema : usa (navegador, HTTPS)\npublicaciones, agenda, reuniones,\ntareas, proyectos de SU secretaría
+PersonaUnicom --> Sistema : usa\ncalendario de cobertura de comunicación
+PersonaJefeGabinete --> Sistema : usa\nDespacho, Gabinete, Auditoría
+PersonaGobernador --> Sistema : usa\nemite instrucciones, ve todo, reabre
+PersonaAdmin --> Sistema : usa\nalta/baja de cuentas, catálogo de secretarías
+
+Sistema ..> Sentry : reporta excepciones no controladas\n(HTTPS, solo si está configurado)
+
+note bottom of Sistema
+  No hay más sistemas externos integrados hoy.
+  [inferencia por ausencia]: no existe cliente de email/SMS,
+  pasarela de pago, ni integración con otro sistema de gobierno
+  en todo el código de apps/api — se buscó explícitamente y no
+  se encontró ningún cliente HTTP saliente hacia un tercero
+  salvo el SDK de Sentry.
+end note
+
+@enduml

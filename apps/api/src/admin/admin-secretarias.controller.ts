@@ -1,8 +1,18 @@
-import { Body, Controller, Param, Patch, Post, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { RolesGuard } from '../common/roles.guard';
 import { Roles } from '../common/roles.decorator';
 import { AdminService } from './admin.service';
-import { ActualizarSecretariaDto, CrearSecretariaDto } from './dto/secretaria.dto';
+import {
+  ActualizarSecretariaDto,
+  CrearSecretariaDto,
+} from './dto/secretaria.dto';
 
 // GET vive en /secretarias (secretarias.controller.ts) -- el catálogo lo
 // puede ver cualquier usuario autenticado, ya lo usan los selects de todo

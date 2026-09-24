@@ -17,6 +17,8 @@ import { logout as logoutRequest } from "@/lib/api";
 import { useSession } from "@/lib/session-context";
 import { useRealtime } from "@/lib/realtime-context";
 import { PublicacionCard } from "@/components/PublicacionCard";
+import { MisPendientes } from "@/components/MisPendientes";
+import { RoleDashboardHero } from "@/components/RoleDashboardHero";
 import { InstitutionalIcon, type IconName } from "@/components/InstitutionalIcon";
 import { Panel, PanelTitle } from "@/components/InstitutionalPanel";
 
@@ -255,10 +257,10 @@ export function InstitutionalDashboard() {
     }
   }
 
-  async function onTransicion(id: string, estado: EstadoPublicacion) {
+  async function onTransicion(id: string, estado: EstadoPublicacion, motivo?: string) {
     setError(null);
     try {
-      const updated = await actualizarEstado(id, estado);
+      const updated = await actualizarEstado(id, estado, motivo);
       setPublicaciones((previous) => previous.map((item) => item.id === id ? updated : item));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Transición no permitida");
@@ -269,32 +271,23 @@ export function InstitutionalDashboard() {
 
   return (
     <div className="mx-auto max-w-[1600px]">
-      <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-        <div>
-          <div className="mb-1.5 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#0A70D6]">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#06E5FA] shadow-[0_0_8px_rgba(6,229,250,.8)]" /> Centro de gestión institucional
-          </div>
-          <h1 className="text-xl font-black tracking-tight text-[#02224F] sm:text-2xl">Panel de coordinación</h1>
-          <p className="mt-1 text-xs capitalize text-slate-500">{longDate ?? "Cargando fecha institucional…"}</p>
-        </div>
-        <button
-          onClick={() => {
-            setError(null);
-            setMostrarForm(true);
-          }}
-          aria-haspopup="dialog"
-          aria-controls="nueva-publicacion-dialog"
-          className="group inline-flex items-center justify-center gap-3 rounded-[14px] border border-[#37F0FC]/20 bg-gradient-to-r from-[#0A70D6] to-[#0451A5] py-2 pl-2 pr-4 text-left text-white shadow-[0_10px_26px_rgba(10,112,214,.24),inset_0_1px_0_rgba(255,255,255,.18)] transition-all hover:-translate-y-0.5 hover:border-[#37F0FC]/35 hover:shadow-[0_14px_32px_rgba(10,112,214,.32)] focus:outline-none focus:ring-4 focus:ring-[#06E5FA]/20"
-        >
-          <span className="flex h-8 w-8 items-center justify-center rounded-[10px] bg-white/12 ring-1 ring-inset ring-white/15 transition-transform group-hover:rotate-90">
-            <InstitutionalIcon name="plus" className="h-4 w-4" />
-          </span>
-          <span>
-            <span className="block text-xs font-extrabold leading-none">Nueva publicación</span>
-            <span className="mt-1 block text-[9px] font-medium leading-none text-[#E3EAEF]/70">Crear contenido institucional</span>
-          </span>
-        </button>
-      </div>
+      <RoleDashboardHero
+        rol={sesion.rol}
+        email={sesion.email}
+        date={longDate ?? "Cargando fecha institucional…"}
+        now={ahora}
+        connected={conectado}
+        stats={{
+          visible: stats.total,
+          pending: stats.revision,
+          offices: stats.secretarias || "—",
+          progress: stats.avance,
+        }}
+        onCreate={() => {
+          setError(null);
+          setMostrarForm(true);
+        }}
+      />
 
       <div className="mb-4 grid grid-cols-2 gap-2.5 md:grid-cols-3 xl:grid-cols-6">
         <MetricCard icon="layers" value={stats.total} label="Visibles" helper="Publicaciones para tu rol" tone="violet" />
@@ -304,6 +297,8 @@ export function InstitutionalDashboard() {
         <MetricCard icon="building" value={stats.secretarias || "—"} label="Secretarías" helper="Unidades activas" tone="rose" />
         <MetricCard icon="chart" value={`${stats.avance}%`} label="Avance" helper="Flujo completado" tone="cyan" />
       </div>
+
+      <MisPendientes />
 
       {mostrarForm && (
         <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center sm:p-6">

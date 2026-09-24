@@ -1,0 +1,50 @@
+@startuml c4-contenedores
+title AGENDA.GOBER — Diagrama de contenedores (C4 nivel 2)
+skinparam backgroundColor #FFFFFF
+skinparam rectangle {
+  RoundCorner 10
+  BorderColor #2C3E50
+}
+skinparam ArrowColor #34495E
+skinparam databaseBackgroundColor #EAF2F8
+
+actor "Persona autenticada\n(cualquier rol)" as Usuario
+
+rectangle "Navegador del usuario" as Navegador {
+}
+
+rectangle "Aplicación Web\n[Contenedor: Next.js 16 + React 19]\n\nSirve el HTML/JS de las 16+ páginas\ndel panel. NO actúa como backend-for-\nfrontend: el navegador llama a la API\ndirecto, cruzando origen (CORS)." as Web
+
+rectangle "API\n[Contenedor: NestJS 10 / Node.js]\n\nREST + WebSocket en el mismo puerto.\nToda la autorización de negocio vive\nen la base (RLS); esta capa valida forma\nde entrada, arma el contexto de sesión\ny traduce errores de Postgres a HTTP." as Api
+
+database "Base de datos\n[Contenedor: PostgreSQL 16.4]\n\n26 migraciones versionadas a mano.\nRow Level Security FORCE en cada tabla\nde negocio. app_user sin BYPASSRLS." as Db
+
+cloud "Sentry\n[Sistema externo — opcional]" as Sentry
+
+Usuario --> Navegador : interactúa
+
+Navegador --> Web : HTTPS\ncarga inicial de páginas (SSR/estático)
+Navegador --> Api : HTTPS (fetch, credentials:include)\nREST — cookies httpOnly access_token/refresh_token
+Navegador --> Api : WSS (socket.io-client)\nwithCredentials: true — misma cookie
+
+Web ..> Sentry : errores de cliente\n(@sentry/nextjs, opcional)
+
+Api --> Db : SQL vía pg.Pool (node-postgres)\nTLS (autofirmado en dev); set_config()\npor transacción para RLS
+Api ..> Sentry : excepciones 5xx\n(@sentry/nestjs, opcional)
+
+note right of Api
+  Dentro de la API conviven 3 relojes:
+  1) el ciclo request/response HTTP normal,
+  2) el gateway de WebSocket (misma auth, cookie del handshake),
+  3) 3 tareas @Cron (barridos horarios/10-min) que llaman
+     funciones SQL SECURITY DEFINER para avisos vencidos.
+  Ver diagramas/componentes-*.puml para el detalle interno.
+end note
+
+note bottom of Db
+  PgListenerService (dentro de Api) mantiene una conexión
+  LISTEN de larga duración aparte del pool — no puede
+  compartir conexiones que el pool recicla por request.
+end note
+
+@enduml

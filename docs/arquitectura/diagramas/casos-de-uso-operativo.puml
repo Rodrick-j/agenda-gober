@@ -1,0 +1,84 @@
+@startuml casos-de-uso-operativo
+title Casos de uso — Roles de secretaría (operador, director, secretario)
+skinparam backgroundColor #FFFFFF
+skinparam usecase {
+  BackgroundColor #FEF9E7
+  BorderColor #7D6608
+}
+skinparam ArrowColor #34495E
+left to right direction
+
+actor Operador
+actor Director
+actor Secretario
+
+Operador <|-- Director
+Director <|-- Secretario
+' Herencia de casos de uso: Director puede todo lo de Operador + lo suyo;
+' Secretario puede todo lo de Director + lo suyo. Refleja rol_rango()
+' (operador=1 < director=2 < secretario=3), no una jerarquía de personas.
+
+rectangle "AGENDA.GOBER — módulos de secretaría" {
+  usecase "Ver publicaciones de mi secretaría" as UC1
+  usecase "Crear publicación (borrador)" as UC2
+  usecase "Pedir revisión de una publicación" as UC3
+  usecase "Aprobar publicación" as UC4
+  usecase "Publicar (hacerla pública)" as UC5
+  usecase "Adjuntar / descargar documento" as UC6
+
+  usecase "Ver agenda de mi secretaría\n(o eventos donde soy invitado)" as UC7
+  usecase "Crear evento" as UC8
+  usecase "Editar / cancelar evento" as UC9
+  usecase "Pedir cobertura de comunicación\npara un evento" as UC10
+
+  usecase "Registrar acta de reunión" as UC11
+  usecase "Crear / cerrar compromiso" as UC12
+  usecase "Cerrar MI compromiso asignado\n(aunque sea de otra secretaría)" as UC13
+
+  usecase "Ver / crear tarea" as UC14
+  usecase "Mover MI tarea asignada\n(pendiente/en progreso/completada)" as UC15
+  usecase "Pedir validación de un ítem\nde Despacho (si mi tarea es parte de uno)" as UC16
+
+  usecase "Ver / editar proyecto" as UC17
+  usecase "Ver indicadores de mi secretaría" as UC18
+  usecase "Ver 'Mi bandeja'\n(lo que espera mi acción)" as UC19
+}
+
+Operador --> UC1
+Operador --> UC2
+Operador --> UC3
+Operador --> UC6
+Operador --> UC7
+Operador --> UC8
+Operador --> UC11
+Operador --> UC13
+Operador --> UC14
+Operador --> UC15
+Operador --> UC16
+Operador --> UC17 : #FF0000;text:#FF0000 solo ver
+Operador --> UC18
+Operador --> UC19
+
+Director --> UC4
+Director --> UC9
+Director --> UC10
+Director --> UC12
+Director --> UC17 : editar + avance
+
+Secretario --> UC5
+
+note right of UC15
+  RLS deja pasar el UPDATE a un asignado
+  sin rango de director, pero un trigger
+  (fn_validar_edicion_tarea) revienta la
+  transacción entera si en el mismo PATCH
+  intenta tocar algo más que el estado.
+end note
+
+note right of UC10
+  Nuevo en esta revisión (migración 026).
+  RLS exige rango director+ de la
+  secretaría dueña del evento, o rol unicom.
+end note
+
+@enduml
